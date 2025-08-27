@@ -58,8 +58,31 @@ ipcMain.handle('select-video-file', async () => {
   return null;
 });
 
+// ランダム速度生成関数
+function generateRandomSpeed(min, max) {
+  return (Math.random() * (max - min) + min).toFixed(2);
+}
+
+// 連番ファイル名生成関数
+function generateSequentialFilename(basePath, baseName, extension) {
+  const fs = require('fs');
+  const path = require('path');
+  
+  let counter = 1;
+  let finalPath;
+  
+  do {
+    const paddedNumber = counter.toString().padStart(3, '0');
+    const fileName = `${baseName}_${paddedNumber}.${extension}`;
+    finalPath = path.join(basePath, fileName);
+    counter++;
+  } while (fs.existsSync(finalPath));
+  
+  return finalPath;
+}
+
 // ループ動画生成
-ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath }) => {
+ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
   return new Promise((resolve, reject) => {
     const fs = require('fs');
     const os = require('os');
@@ -77,15 +100,23 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
       event.sender.send('progress-update', Math.min(overallProgress, 100));
     };
     
-    // フィルターグラフを構築（シンプルな方法）
+    // フィルターグラフを構築
     let filterComplex = '';
     let inputMaps = '';
     
     for (let i = 0; i < loopCount; i++) {
-      // 正再生部分
-      filterComplex += `[0:v]copy[forward${i}];`;
-      // 逆再生部分
-      filterComplex += `[0:v]reverse[reverse${i}];`;
+      if (randomSpeed) {
+        // ランダム速度適用
+        const forwardSpeed = generateRandomSpeed(minSpeed, maxSpeed);
+        const reverseSpeed = generateRandomSpeed(minSpeed, maxSpeed);
+        
+        filterComplex += `[0:v]setpts=PTS/${forwardSpeed}[forward${i}];`;
+        filterComplex += `[0:v]reverse,setpts=PTS/${reverseSpeed}[reverse${i}];`;
+      } else {
+        // 通常速度
+        filterComplex += `[0:v]copy[forward${i}];`;
+        filterComplex += `[0:v]reverse[reverse${i}];`;
+      }
       
       inputMaps += `[forward${i}][reverse${i}]`;
     }
@@ -133,17 +164,25 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
   });
 });
 
-// 保存先選択ダイアログ
-ipcMain.handle('select-output-path', async () => {
-  const result = await dialog.showSaveDialog(mainWindow, {
-    filters: [
-      { name: 'MP4ファイル', extensions: ['mp4'] }
-    ],
-    defaultPath: 'loop_output.mp4'
+// 保存先選択（連番自動生成）
+ipcMain.handle('select-output-path', async (event, inputFileName) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: '保存先フォルダを選択'
   });
   
-  if (!result.canceled) {
-    return result.filePath;
+  if (!result.canceled && result.filePaths.length > 0) {
+    const selectedDirectory = result.filePaths[0];
+    
+    // 入力ファイル名から基本名を生成
+    const baseName = inputFileName ? 
+      path.basename(inputFileName, path.extname(inputFileName)) + '_loop' : 
+      'loop_output';
+    
+    // 連番ファイル名を生成
+    const sequentialPath = generateSequentialFilename(selectedDirectory, baseName, 'mp4');
+    
+    return sequentialPath;
   }
   return null;
 });

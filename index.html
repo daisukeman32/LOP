@@ -8,7 +8,7 @@
 <body>
     <div class="app">
         <header class="header">
-            <h1>LOP<span class="version">Ver1</span></h1>
+            <h1>LOP<span class="version">Ver2</span></h1>
         </header>
         
         <div class="main">
@@ -38,6 +38,24 @@
                     <label class="control-label">ループ回数</label>
                     <input type="number" id="loopCount" value="3" min="1" max="20" class="loop-input">
                 </div>
+                
+                <div class="control-group">
+                    <label class="control-label">
+                        <input type="checkbox" id="randomSpeed" class="random-checkbox">
+                        ランダム速度
+                    </label>
+                    <div id="speedControls" class="speed-controls" style="display: none;">
+                        <div class="speed-range">
+                            <label class="speed-label">最小: <span id="minSpeedValue">0.5</span>x</label>
+                            <input type="range" id="minSpeed" min="0.5" max="3" step="0.1" value="0.5" class="speed-slider">
+                        </div>
+                        <div class="speed-range">
+                            <label class="speed-label">最大: <span id="maxSpeedValue">3.0</span>x</label>
+                            <input type="range" id="maxSpeed" min="0.5" max="3" step="0.1" value="3.0" class="speed-slider">
+                        </div>
+                    </div>
+                </div>
+
                 <div id="totalInfo" class="total-info" style="display: none;">
                     <span class="total-label">総再生時間:</span>
                     <span id="totalDuration" class="total-value"></span>
@@ -49,6 +67,9 @@
                     <span class="icon">🎬</span>
                     <span>ループ動画を出力</span>
                 </button>
+                <div class="output-note">
+                    ※ 連番ファイル名で自動保存 (例: video_loop_001.mp4)
+                </div>
             </div>
 
             <div id="progress" class="progress" style="display: none;">

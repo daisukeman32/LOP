@@ -1,6 +1,6 @@
 {
   "name": "loop-tool",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "シンプルな動画ループ作成ツール",
   "main": "main.js",
   "scripts": {

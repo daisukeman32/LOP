@@ -17,6 +17,12 @@ const videoDuration = document.getElementById('videoDuration');
 const previewVideo = document.getElementById('previewVideo');
 const totalInfo = document.getElementById('totalInfo');
 const totalDuration = document.getElementById('totalDuration');
+const randomSpeed = document.getElementById('randomSpeed');
+const speedControls = document.getElementById('speedControls');
+const minSpeed = document.getElementById('minSpeed');
+const maxSpeed = document.getElementById('maxSpeed');
+const minSpeedValue = document.getElementById('minSpeedValue');
+const maxSpeedValue = document.getElementById('maxSpeedValue');
 
 // ファイル選択ボタンのクリック処理
 selectFileBtn.addEventListener('click', async () => {
@@ -70,8 +76,20 @@ function formatDuration(seconds) {
 function updateTotalDuration() {
     if (videoDurationSeconds > 0) {
         const loopValue = parseInt(loopCount.value) || 1;
-        const totalSeconds = videoDurationSeconds * loopValue * 2; // 正再生 + 逆再生
-        totalDuration.textContent = formatDuration(totalSeconds);
+        
+        if (randomSpeed.checked) {
+            // ランダム速度の場合は平均速度で概算
+            const minSpd = parseFloat(minSpeed.value);
+            const maxSpd = parseFloat(maxSpeed.value);
+            const avgSpeed = (minSpd + maxSpd) / 2;
+            const totalSeconds = (videoDurationSeconds * loopValue * 2) / avgSpeed;
+            totalDuration.textContent = formatDuration(totalSeconds) + ' (概算)';
+        } else {
+            // 通常速度
+            const totalSeconds = videoDurationSeconds * loopValue * 2; // 正再生 + 逆再生
+            totalDuration.textContent = formatDuration(totalSeconds);
+        }
+        
         totalInfo.style.display = 'block';
     }
 }
@@ -88,6 +106,37 @@ function resetVideoInfo() {
 // ループ回数変更時の処理
 loopCount.addEventListener('change', updateTotalDuration);
 
+// ランダム速度チェックボックス変更時
+randomSpeed.addEventListener('change', () => {
+    speedControls.style.display = randomSpeed.checked ? 'block' : 'none';
+    updateTotalDuration();
+});
+
+// 速度スライダー変更時
+minSpeed.addEventListener('input', () => {
+    const value = parseFloat(minSpeed.value);
+    minSpeedValue.textContent = value.toFixed(1);
+    
+    // 最小値が最大値を超えないように調整
+    if (value > parseFloat(maxSpeed.value)) {
+        maxSpeed.value = value;
+        maxSpeedValue.textContent = value.toFixed(1);
+    }
+    updateTotalDuration();
+});
+
+maxSpeed.addEventListener('input', () => {
+    const value = parseFloat(maxSpeed.value);
+    maxSpeedValue.textContent = value.toFixed(1);
+    
+    // 最大値が最小値を下回らないように調整
+    if (value < parseFloat(minSpeed.value)) {
+        minSpeed.value = value;
+        minSpeedValue.textContent = value.toFixed(1);
+    }
+    updateTotalDuration();
+});
+
 // 出力ボタンのクリック処理
 generateBtn.addEventListener('click', async () => {
     if (!selectedVideoPath) {
@@ -96,8 +145,9 @@ generateBtn.addEventListener('click', async () => {
     }
 
     try {
-        // 保存先選択
-        const outputPath = await ipcRenderer.invoke('select-output-path');
+        // 保存先選択（連番自動生成）
+        const inputFileName = path.basename(selectedVideoPath);
+        const outputPath = await ipcRenderer.invoke('select-output-path', inputFileName);
         if (!outputPath) return;
 
         // UI状態の更新
@@ -110,7 +160,10 @@ generateBtn.addEventListener('click', async () => {
         const result = await ipcRenderer.invoke('generate-loop', {
             inputPath: selectedVideoPath,
             loopCount: parseInt(loopCount.value),
-            outputPath: outputPath
+            outputPath: outputPath,
+            randomSpeed: randomSpeed.checked,
+            minSpeed: parseFloat(minSpeed.value),
+            maxSpeed: parseFloat(maxSpeed.value)
         });
 
         if (result.success) {
