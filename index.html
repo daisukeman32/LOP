@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>LOP</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1>LOP<span class="version">Ver1</span></h1>
+        </header>
+        
+        <div class="main">
+            <div class="input-section">
+                <button id="selectFileBtn" class="btn select-btn">
+                    <span class="icon">📁</span>
+                    <span>動画を選択</span>
+                </button>
+            </div>
+
+            <div id="videoInfo" class="video-info" style="display: none;">
+                <div class="info-row">
+                    <span class="label">ファイル:</span>
+                    <span id="fileName" class="value"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">長さ:</span>
+                    <span id="videoDuration" class="value"></span>
+                </div>
+                <div class="preview-container">
+                    <video id="previewVideo" class="preview" controls></video>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label class="control-label">ループ回数</label>
+                    <input type="number" id="loopCount" value="3" min="1" max="20" class="loop-input">
+                </div>
+                <div id="totalInfo" class="total-info" style="display: none;">
+                    <span class="total-label">総再生時間:</span>
+                    <span id="totalDuration" class="total-value"></span>
+                </div>
+            </div>
+
+            <div class="output-section">
+                <button id="generateBtn" class="btn output-btn" disabled>
+                    <span class="icon">🎬</span>
+                    <span>ループ動画を出力</span>
+                </button>
+            </div>
+
+            <div id="progress" class="progress" style="display: none;">
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div class="progress-info">
+                    <span id="progressText">0%</span>
+                    <span class="progress-label">処理中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
