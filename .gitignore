@@ -39,4 +39,5 @@ coverage/
 
 # Temporary files
 tmp/
-temp/
+temp/ffmpeg-master-latest-win64-gpl/
+ffmpeg.zip
