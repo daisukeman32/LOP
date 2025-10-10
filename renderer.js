@@ -412,6 +412,7 @@ function updateButtonText() {
 const themeDark = document.getElementById('themeDark');
 const themeDay = document.getElementById('themeDay');
 const themePink = document.getElementById('themePink');
+const lopO = document.getElementById('lopO');
 
 // ローカルストレージからテーマを読み込み
 const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -444,12 +445,15 @@ function applyTheme(theme) {
     if (theme === 'day') {
         document.body.classList.add('theme-day');
         themeDay.classList.add('active');
+        lopO.textContent = 'O';
     } else if (theme === 'pink') {
         document.body.classList.add('theme-pink');
         themePink.classList.add('active');
+        lopO.textContent = '♥';
     } else {
         // dark (デフォルト)
         themeDark.classList.add('active');
+        lopO.textContent = 'O';
     }
 }
 

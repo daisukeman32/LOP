@@ -44,10 +44,10 @@ body.theme-day {
 
 /* ピンクモード */
 body.theme-pink {
-    --text-primary: #ff10f0;
-    --text-secondary: #ff10f0;
-    --text-title: #ff10f0;
-    --accent-color: #ff10f0;
+    --text-primary: #ff00ff;
+    --text-secondary: #ff00ff;
+    --text-title: #ff00ff;
+    --accent-color: #ff00ff;
 }
 
 .app {
@@ -124,7 +124,7 @@ h1 {
     font-weight: 400;
     color: var(--text-secondary);
     position: absolute;
-    top: 8px;
+    bottom: 0;
     margin-left: 8px;
     letter-spacing: 1px;
     transition: color 0.3s ease;
