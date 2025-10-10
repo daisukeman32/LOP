@@ -30,26 +30,14 @@
     "files": [
       "main.js",
       "index.html",
-      "renderer.js", 
+      "renderer.js",
       "styles.css",
       "package.json",
-      "node_modules/**/*",
-      "resources/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "node_modules/@ffmpeg-installer/darwin-arm64/ffmpeg",
-        "to": "bin/ffmpeg",
-        "filter": "**/*"
-      },
-      {
-        "from": "node_modules/@ffprobe-installer/darwin-arm64/ffprobe",
-        "to": "bin/ffprobe", 
-        "filter": "**/*"
-      }
+      "node_modules/**/*"
     ],
     "mac": {
       "category": "public.app-category.video",
+      "icon": "LPOicon.png",
       "artifactName": "LOP-${version}-Mac-${arch}.${ext}",
       "target": [
         {
@@ -63,11 +51,25 @@
       ]
     },
     "win": {
+      "icon": "LPOicon.png",
+      "artifactName": "LOP-${version}-Windows-${arch}.${ext}",
       "target": [
         {
           "target": "nsis",
           "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
         }
+      ]
+    },
+    "linux": {
+      "icon": "LPOicon.png",
+      "artifactName": "LOP-${version}-Linux-${arch}.${ext}",
+      "target": [
+        "AppImage",
+        "zip"
       ]
     }
   }
