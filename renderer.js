@@ -64,12 +64,23 @@ selectMultipleBtn.addEventListener('click', async () => {
         if (filePaths && filePaths.length > 0) {
             isBatchMode = true;
             selectedVideoPath = null;
-            selectedFiles = filePaths;
             videoInfo.style.display = 'none';
             totalInfo.style.display = 'none';
+
+            // 累積追加：重複を除外して既存のリストに追加
+            const newFiles = filePaths.filter(fp => !selectedFiles.includes(fp));
+            selectedFiles = [...selectedFiles, ...newFiles];
+
             renderFileList();
             generateBtn.disabled = false;
             updateButtonText();
+
+            // 追加されたファイル数を通知
+            if (newFiles.length > 0) {
+                showSuccess(`${newFiles.length}個のファイルを追加しました（合計: ${selectedFiles.length}個）`);
+            } else {
+                showError('すべてのファイルは既に選択されています');
+            }
         }
     } catch (error) {
         showError('ファイル選択エラー: ' + error.message);
