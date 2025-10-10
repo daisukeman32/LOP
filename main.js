@@ -5,11 +5,11 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
 
 // FFmpegバイナリのパス設定
-const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 const fs = require('fs');
 
 function setupFFmpegPaths() {
-  if (isDev) {
+  // アプリがパッケージングされているかどうかで判定
+  if (!app.isPackaged) {
     // 開発時：@ffmpeg-installerからバイナリを使用
     console.log('開発モード: @ffmpeg-installerを使用');
     try {
