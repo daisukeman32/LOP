@@ -355,6 +355,7 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
       try {
         // 個別のループ動画生成
         const result = await new Promise((resolve, reject) => {
+          const os = require('os');
           const tempDir = path.join(os.tmpdir(), 'loop-tool-batch-' + Date.now());
           fs.mkdirSync(tempDir, { recursive: true });
 
