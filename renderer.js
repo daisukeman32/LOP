@@ -4,14 +4,22 @@ const path = require('path');
 let selectedVideoPath = null;
 let videoDurationSeconds = 0;
 
+// バッチ処理用の変数
+let selectedFiles = [];
+let isBatchMode = false;
+
 // DOM要素の取得
 const selectFileBtn = document.getElementById('selectFileBtn');
+const selectMultipleBtn = document.getElementById('selectMultipleBtn');
 const fileName = document.getElementById('fileName');
 const loopCount = document.getElementById('loopCount');
 const generateBtn = document.getElementById('generateBtn');
+const generateBtnText = document.getElementById('generateBtnText');
+const outputNoteText = document.getElementById('outputNoteText');
 const progressSection = document.getElementById('progress');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
+const progressLabel = document.getElementById('progressLabel');
 const videoInfo = document.getElementById('videoInfo');
 const videoDuration = document.getElementById('videoDuration');
 const previewVideo = document.getElementById('previewVideo');
@@ -24,17 +32,57 @@ const maxSpeed = document.getElementById('maxSpeed');
 const minSpeedValue = document.getElementById('minSpeedValue');
 const maxSpeedValue = document.getElementById('maxSpeedValue');
 
+// バッチ処理用DOM要素
+const fileList = document.getElementById('fileList');
+const fileListItems = document.getElementById('fileListItems');
+const fileCount = document.querySelector('.file-count');
+const clearFilesBtn = document.getElementById('clearFilesBtn');
+const batchProgress = document.getElementById('batchProgress');
+const batchProgressText = document.getElementById('batchProgressText');
+
 // ファイル選択ボタンのクリック処理
 selectFileBtn.addEventListener('click', async () => {
     try {
         const filePath = await ipcRenderer.invoke('select-video-file');
         if (filePath) {
+            isBatchMode = false;
             selectedVideoPath = filePath;
+            selectedFiles = [];
+            fileList.style.display = 'none';
             loadVideoInfo(filePath);
+            updateButtonText();
         }
     } catch (error) {
         showError('ファイル選択エラー: ' + error.message);
     }
+});
+
+// 複数ファイル選択ボタンのクリック処理
+selectMultipleBtn.addEventListener('click', async () => {
+    try {
+        const filePaths = await ipcRenderer.invoke('select-multiple-video-files');
+        if (filePaths && filePaths.length > 0) {
+            isBatchMode = true;
+            selectedVideoPath = null;
+            selectedFiles = filePaths;
+            videoInfo.style.display = 'none';
+            totalInfo.style.display = 'none';
+            renderFileList();
+            generateBtn.disabled = false;
+            updateButtonText();
+        }
+    } catch (error) {
+        showError('ファイル選択エラー: ' + error.message);
+    }
+});
+
+// ファイルリストクリアボタン
+clearFilesBtn.addEventListener('click', () => {
+    selectedFiles = [];
+    isBatchMode = false;
+    fileList.style.display = 'none';
+    generateBtn.disabled = true;
+    updateButtonText();
 });
 
 // 動画情報を読み込む関数
@@ -139,6 +187,17 @@ maxSpeed.addEventListener('input', () => {
 
 // 出力ボタンのクリック処理
 generateBtn.addEventListener('click', async () => {
+    if (isBatchMode) {
+        // バッチ処理モード
+        await processBatchFiles();
+    } else {
+        // 単一ファイル処理モード
+        await processSingleFile();
+    }
+});
+
+// 単一ファイル処理
+async function processSingleFile() {
     if (!selectedVideoPath) {
         showError('動画ファイルが選択されていません');
         return;
@@ -154,6 +213,7 @@ generateBtn.addEventListener('click', async () => {
         generateBtn.disabled = true;
         generateBtn.innerHTML = '<span class="icon">⏳</span><span>処理中...</span>';
         progressSection.style.display = 'block';
+        progressLabel.textContent = '処理中...';
         updateProgress(0);
 
         // ループ動画生成開始
@@ -183,11 +243,65 @@ generateBtn.addEventListener('click', async () => {
             progressSection.style.display = 'none';
         }, 3000);
     }
-});
+}
+
+// バッチ処理
+async function processBatchFiles() {
+    if (selectedFiles.length === 0) {
+        showError('動画ファイルが選択されていません');
+        return;
+    }
+
+    try {
+        // UI状態の更新
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<span class="icon">⏳</span><span>一括処理中...</span>';
+        progressSection.style.display = 'block';
+        batchProgress.style.display = 'block';
+        updateProgress(0);
+
+        const totalFiles = selectedFiles.length;
+        let completedFiles = 0;
+
+        // バッチ処理リクエスト
+        const result = await ipcRenderer.invoke('generate-batch-loop', {
+            inputPaths: selectedFiles,
+            loopCount: parseInt(loopCount.value),
+            randomSpeed: randomSpeed.checked,
+            minSpeed: parseFloat(minSpeed.value),
+            maxSpeed: parseFloat(maxSpeed.value)
+        });
+
+        if (result.success) {
+            showSuccess(`完了: ${totalFiles}個のファイルを処理しました`);
+            updateProgress(100);
+            batchProgressText.textContent = `${totalFiles} / ${totalFiles} ファイル完了`;
+        } else {
+            throw new Error(result.error || '一括処理に失敗しました');
+        }
+
+    } catch (error) {
+        showError('一括出力エラー: ' + error.message);
+        updateProgress(0);
+    } finally {
+        generateBtn.disabled = false;
+        updateButtonText();
+        setTimeout(() => {
+            progressSection.style.display = 'none';
+            batchProgress.style.display = 'none';
+        }, 5000);
+    }
+}
 
 // プログレス更新のリスナー
 ipcRenderer.on('progress-update', (event, percent) => {
     updateProgress(Math.round(percent));
+});
+
+// バッチ処理進行状況のリスナー
+ipcRenderer.on('batch-progress-update', (event, { current, total, fileName }) => {
+    batchProgressText.textContent = `${current} / ${total} ファイル完了`;
+    progressLabel.textContent = `処理中: ${fileName}`;
 });
 
 // プログレス表示の更新
@@ -224,6 +338,56 @@ function showError(message) {
     setTimeout(() => {
         errorDiv.remove();
     }, 5000);
+}
+
+// ファイルリストを表示
+function renderFileList() {
+    if (selectedFiles.length === 0) {
+        fileList.style.display = 'none';
+        return;
+    }
+
+    fileList.style.display = 'block';
+    fileCount.textContent = `${selectedFiles.length}ファイル選択中`;
+    fileListItems.innerHTML = '';
+
+    selectedFiles.forEach((filePath, index) => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'file-item-name';
+        nameSpan.textContent = path.basename(filePath);
+        nameSpan.title = filePath;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'file-item-remove';
+        removeBtn.textContent = '削除';
+        removeBtn.onclick = () => {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+            if (selectedFiles.length === 0) {
+                generateBtn.disabled = true;
+                isBatchMode = false;
+                updateButtonText();
+            }
+        };
+
+        item.appendChild(nameSpan);
+        item.appendChild(removeBtn);
+        fileListItems.appendChild(item);
+    });
+}
+
+// ボタンテキストを更新
+function updateButtonText() {
+    if (isBatchMode) {
+        generateBtnText.textContent = `${selectedFiles.length}個のループ動画を一括出力`;
+        outputNoteText.textContent = '※ LOPCOMPフォルダに保存されます';
+    } else {
+        generateBtnText.textContent = 'ループ動画を出力';
+        outputNoteText.textContent = '※ 連番ファイル名で自動保存 (例: video_loop_001.mp4)';
+    }
 }
 
 // 初期化

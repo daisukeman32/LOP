@@ -17,6 +17,18 @@
                     <span class="icon">📁</span>
                     <span>動画を選択</span>
                 </button>
+                <button id="selectMultipleBtn" class="btn select-multiple-btn">
+                    <span class="icon">📂</span>
+                    <span>複数動画を一括選択</span>
+                </button>
+            </div>
+
+            <div id="fileList" class="file-list" style="display: none;">
+                <div class="file-list-header">
+                    <span class="file-count">0ファイル選択中</span>
+                    <button id="clearFilesBtn" class="btn-small clear-btn">クリア</button>
+                </div>
+                <div id="fileListItems" class="file-list-items"></div>
             </div>
 
             <div id="videoInfo" class="video-info" style="display: none;">
@@ -65,20 +77,23 @@
             <div class="output-section">
                 <button id="generateBtn" class="btn output-btn" disabled>
                     <span class="icon">🎬</span>
-                    <span>ループ動画を出力</span>
+                    <span id="generateBtnText">ループ動画を出力</span>
                 </button>
                 <div class="output-note">
-                    ※ 連番ファイル名で自動保存 (例: video_loop_001.mp4)
+                    <span id="outputNoteText">※ 連番ファイル名で自動保存 (例: video_loop_001.mp4)</span>
                 </div>
             </div>
 
             <div id="progress" class="progress" style="display: none;">
+                <div id="batchProgress" class="batch-progress" style="display: none;">
+                    <span id="batchProgressText" class="batch-progress-text">0 / 0 ファイル完了</span>
+                </div>
                 <div class="progress-bar">
                     <div id="progressFill" class="progress-fill"></div>
                 </div>
                 <div class="progress-info">
                     <span id="progressText">0%</span>
-                    <span class="progress-label">処理中...</span>
+                    <span id="progressLabel" class="progress-label">処理中...</span>
                 </div>
             </div>
         </div>

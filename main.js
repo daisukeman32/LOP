@@ -118,9 +118,24 @@ ipcMain.handle('select-video-file', async () => {
     ],
     properties: ['openFile']
   });
-  
+
   if (!result.canceled && result.filePaths.length > 0) {
     return result.filePaths[0];
+  }
+  return null;
+});
+
+// 複数ファイル選択ダイアログ
+ipcMain.handle('select-multiple-video-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    filters: [
+      { name: '動画ファイル', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }
+    ],
+    properties: ['openFile', 'multiSelections']
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths;
   }
   return null;
 });
@@ -266,19 +281,181 @@ ipcMain.handle('select-output-path', async (event, inputFileName) => {
     properties: ['openDirectory'],
     title: '保存先フォルダを選択'
   });
-  
+
   if (!result.canceled && result.filePaths.length > 0) {
     const selectedDirectory = result.filePaths[0];
-    
+
     // 入力ファイル名から基本名を生成
-    const baseName = inputFileName ? 
-      path.basename(inputFileName, path.extname(inputFileName)) + '_loop' : 
+    const baseName = inputFileName ?
+      path.basename(inputFileName, path.extname(inputFileName)) + '_loop' :
       'loop_output';
-    
+
     // 連番ファイル名を生成
     const sequentialPath = generateSequentialFilename(selectedDirectory, baseName, 'mp4');
-    
+
     return sequentialPath;
   }
   return null;
+});
+
+// バッチ処理：複数ファイルを一括でループ化
+ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
+  try {
+    console.log('=== バッチ処理開始 ===');
+    console.log('ファイル数:', inputPaths.length);
+    console.log('ループ回数:', loopCount);
+
+    const os = require('os');
+
+    // LOPCOMPフォルダをホームディレクトリに作成
+    const homeDir = os.homedir();
+    const outputDir = path.join(homeDir, 'LOPCOMP');
+
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+      console.log('LOPCOMPフォルダを作成:', outputDir);
+    }
+
+    const totalFiles = inputPaths.length;
+    let completedFiles = 0;
+    const results = [];
+
+    // 各ファイルを順次処理
+    for (const inputPath of inputPaths) {
+      const inputFileName = path.basename(inputPath, path.extname(inputPath));
+      const outputFileName = `${inputFileName}_loop.mp4`;
+      const outputPath = path.join(outputDir, outputFileName);
+
+      // 進捗通知
+      event.sender.send('batch-progress-update', {
+        current: completedFiles,
+        total: totalFiles,
+        fileName: path.basename(inputPath)
+      });
+
+      console.log(`処理中 (${completedFiles + 1}/${totalFiles}): ${inputFileName}`);
+
+      try {
+        // 個別のループ動画生成
+        const result = await new Promise((resolve, reject) => {
+          const tempDir = path.join(os.tmpdir(), 'loop-tool-batch-' + Date.now());
+          fs.mkdirSync(tempDir, { recursive: true });
+
+          // 進行状況更新関数
+          const updateProgress = (progress = 0) => {
+            event.sender.send('progress-update', Math.min(progress, 100));
+          };
+
+          // メモリ効率を改善した実装
+          let filterComplex;
+
+          if (loopCount <= 2) {
+            let filterParts = [];
+            let concatInputs = '';
+
+            for (let i = 0; i < loopCount; i++) {
+              filterParts.push(`[0:v]copy[forward${i}]`);
+              filterParts.push(`[0:v]reverse[reverse${i}]`);
+              concatInputs += `[forward${i}][reverse${i}]`;
+            }
+
+            filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+            filterComplex = filterParts.join(';');
+          } else {
+            filterComplex = `[0:v]split=${loopCount}`;
+
+            for (let i = 0; i < loopCount; i++) {
+              filterComplex += `[s${i}]`;
+            }
+            filterComplex += ';';
+
+            let concatInputs = '';
+            for (let i = 0; i < loopCount; i++) {
+              filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
+              filterComplex += `[r${i}]reverse[rev${i}];`;
+              concatInputs += `[f${i}][rev${i}]`;
+            }
+
+            filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+          }
+
+          const timeout = setTimeout(() => {
+            console.log('バッチ処理: FFmpegタイムアウト');
+            command.kill('SIGKILL');
+            resolve({ success: false, error: 'タイムアウト' });
+          }, 600000);
+
+          const command = ffmpeg(inputPath)
+            .complexFilter(filterComplex)
+            .outputOptions([
+              '-map', '[output]',
+              '-c:v', 'libx264',
+              '-preset', 'ultrafast',
+              '-crf', '30',
+              '-threads', '1',
+              '-max_muxing_queue_size', '512',
+              '-bufsize', '1M',
+              '-maxrate', '2M'
+            ])
+            .output(outputPath)
+            .on('start', (commandLine) => {
+              console.log('FFmpeg開始:', inputFileName);
+              updateProgress(0);
+            })
+            .on('progress', (progress) => {
+              updateProgress(progress.percent || 0);
+            })
+            .on('end', () => {
+              clearTimeout(timeout);
+              fs.rmSync(tempDir, { recursive: true, force: true });
+              updateProgress(100);
+              resolve({ success: true, outputPath: outputPath });
+            })
+            .on('error', (err) => {
+              clearTimeout(timeout);
+              fs.rmSync(tempDir, { recursive: true, force: true });
+              console.error('FFmpegエラー:', err);
+              resolve({ success: false, error: err.message });
+            });
+
+          command.run();
+        });
+
+        results.push(result);
+        completedFiles++;
+
+        // 進捗更新
+        event.sender.send('batch-progress-update', {
+          current: completedFiles,
+          total: totalFiles,
+          fileName: path.basename(inputPath)
+        });
+
+      } catch (error) {
+        console.error(`ファイル処理エラー (${inputFileName}):`, error);
+        results.push({ success: false, error: error.message, fileName: inputFileName });
+        completedFiles++;
+      }
+    }
+
+    // 成功したファイル数をカウント
+    const successCount = results.filter(r => r.success).length;
+    console.log(`=== バッチ処理完了 ===`);
+    console.log(`成功: ${successCount}/${totalFiles}`);
+
+    return {
+      success: true,
+      outputDir: outputDir,
+      totalFiles: totalFiles,
+      successCount: successCount,
+      results: results
+    };
+
+  } catch (error) {
+    console.error('バッチ処理エラー:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 });
