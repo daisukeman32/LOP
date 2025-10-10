@@ -20,52 +20,48 @@ function setupFFmpegPaths() {
       console.error('FFmpeg開発パス設定エラー:', error);
     }
   } else {
-    // 本番時：アプリリソース内のバイナリを使用
-    console.log('本番モード: 内蔵FFmpegを使用');
-    
-    // アプリにバンドルされたFFmpegバイナリを使用
-    const resourcesPath = process.resourcesPath;
-    const ffmpegPath = path.join(resourcesPath, 'bin', 'ffmpeg');
-    const ffprobePath = path.join(resourcesPath, 'bin', 'ffprobe');
-    
+    // 本番時：ASARアンパックされたバイナリを使用
+    console.log('本番モード: ASARアンパック版FFmpegを使用');
+
+    // @ffmpeg-installerのパスを取得し、.asarを.asar.unpackedに置換
+    let ffmpegPath = ffmpegInstaller.path;
+    let ffprobePath = ffprobeInstaller.path;
+
+    // ASARアーカイブ内のパスの場合、.asar.unpackedに置換
+    if (ffmpegPath.includes('.asar')) {
+      ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
+    }
+    if (ffprobePath.includes('.asar')) {
+      ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked');
+    }
+
     console.log('アーキテクチャ:', process.arch);
-    console.log('リソースパス:', resourcesPath);
     console.log('FFmpegパス:', ffmpegPath);
-    
+    console.log('FFprobeパス:', ffprobePath);
+
+    // パスの存在確認とパーミッション設定
     if (fs.existsSync(ffmpegPath)) {
-      // バイナリを実行可能にする
       try {
         fs.chmodSync(ffmpegPath, '755');
         ffmpeg.setFfmpegPath(ffmpegPath);
-        console.log('FFmpeg内蔵バイナリを使用:', ffmpegPath);
+        console.log('✅ FFmpegパス設定成功:', ffmpegPath);
       } catch (error) {
-        console.error('FFmpegバイナリの権限設定エラー:', error);
+        console.error('FFmpegパーミッション設定エラー:', error);
       }
     } else {
-      console.warn('FFmpeg内蔵バイナリが見つかりません。フォールバックを試します。');
-      try {
-        ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-        console.log('フォールバック: @ffmpeg-installer使用');
-      } catch (error) {
-        console.error('FFmpegの設定に失敗しました:', error);
-      }
+      console.error('❌ FFmpegバイナリが見つかりません:', ffmpegPath);
     }
-    
+
     if (fs.existsSync(ffprobePath)) {
       try {
         fs.chmodSync(ffprobePath, '755');
         ffmpeg.setFfprobePath(ffprobePath);
-        console.log('FFprobe内蔵バイナリを使用:', ffprobePath);
+        console.log('✅ FFprobeパス設定成功:', ffprobePath);
       } catch (error) {
-        console.error('FFprobeバイナリの権限設定エラー:', error);
+        console.error('FFprobeパーミッション設定エラー:', error);
       }
     } else {
-      try {
-        ffmpeg.setFfprobePath(ffprobeInstaller.path);
-        console.log('フォールバック: @ffprobe-installer使用');
-      } catch (error) {
-        console.error('FFprobeの設定に失敗しました:', error);
-      }
+      console.error('❌ FFprobeバイナリが見つかりません:', ffprobePath);
     }
   }
 }
