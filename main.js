@@ -201,12 +201,17 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
       let concatInputs = '';
 
       if (loopMode === 'forward') {
-        // Forwardモード：正再生 → 正再生
-        for (let i = 0; i < loopCount; i++) {
-          filterParts.push(`[0:v]copy[forward1_${i}]`);
-          filterParts.push(`[0:v]copy[forward2_${i}]`);
-          concatInputs += `[forward1_${i}][forward2_${i}]`;
+        // Forwardモード：正再生 → 正再生（フレーム重複回避）
+        // 最初のループ: 全フレーム、2回目以降: 最初のフレームをスキップ
+        filterParts.push(`[0:v]copy[v0]`);
+        concatInputs += `[v0]`;
+
+        for (let i = 1; i < loopCount; i++) {
+          filterParts.push(`[0:v]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
+          concatInputs += `[v${i}]`;
         }
+
+        filterParts.push(`${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`);
       } else {
         // Reverseモード（デフォルト）：正再生 → 逆再生
         for (let i = 0; i < loopCount; i++) {
@@ -214,9 +219,9 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
           filterParts.push(`[0:v]reverse[reverse${i}]`);
           concatInputs += `[forward${i}][reverse${i}]`;
         }
-      }
 
-      filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+        filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+      }
       filterComplex = filterParts.join(';');
     } else {
       // 多いループ数：分割処理でメモリ効率を改善
@@ -231,11 +236,16 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
       // 各ストリームをforward/reverseペアまたはforward/forwardペアに
       let concatInputs = '';
       if (loopMode === 'forward') {
-        // Forwardモード：各ストリームを2回使う
-        for (let i = 0; i < loopCount; i++) {
-          filterComplex += `[s${i}]split=2[f1_${i}][f2_${i}];`;
-          concatInputs += `[f1_${i}][f2_${i}]`;
+        // Forwardモード：最初は全フレーム、以降は最初のフレームをスキップ
+        filterComplex += `[s0]copy[v0];`;
+        concatInputs += `[v0]`;
+
+        for (let i = 1; i < loopCount; i++) {
+          filterComplex += `[s${i}]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}];`;
+          concatInputs += `[v${i}]`;
         }
+
+        filterComplex += `${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`;
       } else {
         // Reverseモード：各ストリームをforward/reverseに分割
         for (let i = 0; i < loopCount; i++) {
@@ -243,9 +253,9 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
           filterComplex += `[r${i}]reverse[rev${i}];`;
           concatInputs += `[f${i}][rev${i}]`;
         }
-      }
 
-      filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+        filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+      }
     }
     
     console.log('ループ数:', loopCount, '使用フィルター:', filterComplex);
@@ -387,12 +397,16 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
             let concatInputs = '';
 
             if (loopMode === 'forward') {
-              // Forwardモード：正再生 → 正再生
-              for (let i = 0; i < loopCount; i++) {
-                filterParts.push(`[0:v]copy[forward1_${i}]`);
-                filterParts.push(`[0:v]copy[forward2_${i}]`);
-                concatInputs += `[forward1_${i}][forward2_${i}]`;
+              // Forwardモード：正再生 → 正再生（フレーム重複回避）
+              filterParts.push(`[0:v]copy[v0]`);
+              concatInputs += `[v0]`;
+
+              for (let i = 1; i < loopCount; i++) {
+                filterParts.push(`[0:v]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
+                concatInputs += `[v${i}]`;
               }
+
+              filterParts.push(`${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`);
             } else {
               // Reverseモード（デフォルト）：正再生 → 逆再生
               for (let i = 0; i < loopCount; i++) {
@@ -400,9 +414,9 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
                 filterParts.push(`[0:v]reverse[reverse${i}]`);
                 concatInputs += `[forward${i}][reverse${i}]`;
               }
-            }
 
-            filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+              filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+            }
             filterComplex = filterParts.join(';');
           } else {
             filterComplex = `[0:v]split=${loopCount}`;
@@ -414,11 +428,16 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
 
             let concatInputs = '';
             if (loopMode === 'forward') {
-              // Forwardモード：各ストリームを2回使う
-              for (let i = 0; i < loopCount; i++) {
-                filterComplex += `[s${i}]split=2[f1_${i}][f2_${i}];`;
-                concatInputs += `[f1_${i}][f2_${i}]`;
+              // Forwardモード：最初は全フレーム、以降は最初のフレームをスキップ
+              filterComplex += `[s0]copy[v0];`;
+              concatInputs += `[v0]`;
+
+              for (let i = 1; i < loopCount; i++) {
+                filterComplex += `[s${i}]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}];`;
+                concatInputs += `[v${i}]`;
               }
+
+              filterComplex += `${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`;
             } else {
               // Reverseモード：各ストリームをforward/reverseに分割
               for (let i = 0; i < loopCount; i++) {
@@ -426,9 +445,9 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
                 filterComplex += `[r${i}]reverse[rev${i}];`;
                 concatInputs += `[f${i}][rev${i}]`;
               }
-            }
 
-            filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+              filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+            }
           }
 
           const timeout = setTimeout(() => {
