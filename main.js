@@ -174,10 +174,10 @@ function generateSequentialFilename(basePath, baseName, extension) {
 }
 
 // ループ動画生成
-ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
+ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, loopMode = 'reverse' }) => {
   return new Promise((resolve, reject) => {
     console.log('=== ループ生成開始 ===');
-    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed });
+    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed, loopMode });
     console.log('loopCountの型:', typeof loopCount, 'loopCountの値:', loopCount);
     const fs = require('fs');
     const os = require('os');
@@ -193,40 +193,58 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
     
     // メモリ効率を改善した実装
     let filterComplex;
-    
+
     // ループ数に基づいて適切な方法を選択
     if (loopCount <= 2) {
       // 少ないループ数：直接処理
       let filterParts = [];
       let concatInputs = '';
-      
-      for (let i = 0; i < loopCount; i++) {
-        filterParts.push(`[0:v]copy[forward${i}]`);
-        filterParts.push(`[0:v]reverse[reverse${i}]`);
-        concatInputs += `[forward${i}][reverse${i}]`;
+
+      if (loopMode === 'forward') {
+        // Forwardモード：正再生 → 正再生
+        for (let i = 0; i < loopCount; i++) {
+          filterParts.push(`[0:v]copy[forward1_${i}]`);
+          filterParts.push(`[0:v]copy[forward2_${i}]`);
+          concatInputs += `[forward1_${i}][forward2_${i}]`;
+        }
+      } else {
+        // Reverseモード（デフォルト）：正再生 → 逆再生
+        for (let i = 0; i < loopCount; i++) {
+          filterParts.push(`[0:v]copy[forward${i}]`);
+          filterParts.push(`[0:v]reverse[reverse${i}]`);
+          concatInputs += `[forward${i}][reverse${i}]`;
+        }
       }
-      
+
       filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
       filterComplex = filterParts.join(';');
     } else {
       // 多いループ数：分割処理でメモリ効率を改善
-      // まず1つのループパターンを作成し、それを繰り返す
       filterComplex = `[0:v]split=${loopCount}`;
-      
+
       // 分割された各ストリームを処理
       for (let i = 0; i < loopCount; i++) {
         filterComplex += `[s${i}]`;
       }
       filterComplex += ';';
-      
-      // 各ストリームをforward/reverseペアに
+
+      // 各ストリームをforward/reverseペアまたはforward/forwardペアに
       let concatInputs = '';
-      for (let i = 0; i < loopCount; i++) {
-        filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
-        filterComplex += `[r${i}]reverse[rev${i}];`;
-        concatInputs += `[f${i}][rev${i}]`;
+      if (loopMode === 'forward') {
+        // Forwardモード：各ストリームを2回使う
+        for (let i = 0; i < loopCount; i++) {
+          filterComplex += `[s${i}]split=2[f1_${i}][f2_${i}];`;
+          concatInputs += `[f1_${i}][f2_${i}]`;
+        }
+      } else {
+        // Reverseモード：各ストリームをforward/reverseに分割
+        for (let i = 0; i < loopCount; i++) {
+          filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
+          filterComplex += `[r${i}]reverse[rev${i}];`;
+          concatInputs += `[f${i}][rev${i}]`;
+        }
       }
-      
+
       filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
     }
     
@@ -309,11 +327,12 @@ ipcMain.handle('select-output-path', async (event, inputFileName) => {
 });
 
 // バッチ処理：複数ファイルを一括でループ化
-ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null }) => {
+ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null, loopMode = 'reverse' }) => {
   try {
     console.log('=== バッチ処理開始 ===');
     console.log('ファイル数:', inputPaths.length);
     console.log('ループ回数:', loopCount);
+    console.log('再生モード:', loopMode);
     console.log('保存先:', outputDir);
 
     // 保存先フォルダの確認・作成
@@ -367,10 +386,20 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
             let filterParts = [];
             let concatInputs = '';
 
-            for (let i = 0; i < loopCount; i++) {
-              filterParts.push(`[0:v]copy[forward${i}]`);
-              filterParts.push(`[0:v]reverse[reverse${i}]`);
-              concatInputs += `[forward${i}][reverse${i}]`;
+            if (loopMode === 'forward') {
+              // Forwardモード：正再生 → 正再生
+              for (let i = 0; i < loopCount; i++) {
+                filterParts.push(`[0:v]copy[forward1_${i}]`);
+                filterParts.push(`[0:v]copy[forward2_${i}]`);
+                concatInputs += `[forward1_${i}][forward2_${i}]`;
+              }
+            } else {
+              // Reverseモード（デフォルト）：正再生 → 逆再生
+              for (let i = 0; i < loopCount; i++) {
+                filterParts.push(`[0:v]copy[forward${i}]`);
+                filterParts.push(`[0:v]reverse[reverse${i}]`);
+                concatInputs += `[forward${i}][reverse${i}]`;
+              }
             }
 
             filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
@@ -384,10 +413,19 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
             filterComplex += ';';
 
             let concatInputs = '';
-            for (let i = 0; i < loopCount; i++) {
-              filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
-              filterComplex += `[r${i}]reverse[rev${i}];`;
-              concatInputs += `[f${i}][rev${i}]`;
+            if (loopMode === 'forward') {
+              // Forwardモード：各ストリームを2回使う
+              for (let i = 0; i < loopCount; i++) {
+                filterComplex += `[s${i}]split=2[f1_${i}][f2_${i}];`;
+                concatInputs += `[f1_${i}][f2_${i}]`;
+              }
+            } else {
+              // Reverseモード：各ストリームをforward/reverseに分割
+              for (let i = 0; i < loopCount; i++) {
+                filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
+                filterComplex += `[r${i}]reverse[rev${i}];`;
+                concatInputs += `[f${i}][rev${i}]`;
+              }
             }
 
             filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
