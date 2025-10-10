@@ -408,6 +408,51 @@ function updateButtonText() {
     }
 }
 
+// テーマ切り替え機能
+const themeDark = document.getElementById('themeDark');
+const themeDay = document.getElementById('themeDay');
+const themePink = document.getElementById('themePink');
+
+// ローカルストレージからテーマを読み込み
+const savedTheme = localStorage.getItem('theme') || 'dark';
+applyTheme(savedTheme);
+
+// テーマ切り替えイベント
+themeDark.addEventListener('click', () => {
+    applyTheme('dark');
+    localStorage.setItem('theme', 'dark');
+});
+
+themeDay.addEventListener('click', () => {
+    applyTheme('day');
+    localStorage.setItem('theme', 'day');
+});
+
+themePink.addEventListener('click', () => {
+    applyTheme('pink');
+    localStorage.setItem('theme', 'pink');
+});
+
+function applyTheme(theme) {
+    // すべてのテーマクラスを削除
+    document.body.classList.remove('theme-day', 'theme-pink');
+
+    // ボタンのアクティブ状態をリセット
+    document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+
+    // テーマを適用
+    if (theme === 'day') {
+        document.body.classList.add('theme-day');
+        themeDay.classList.add('active');
+    } else if (theme === 'pink') {
+        document.body.classList.add('theme-pink');
+        themePink.classList.add('active');
+    } else {
+        // dark (デフォルト)
+        themeDark.classList.add('active');
+    }
+}
+
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
     console.log('るーぷツール準備完了');

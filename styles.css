@@ -4,51 +4,123 @@
     box-sizing: border-box;
 }
 
+/* ダークモード（デフォルト） */
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-    color: #e0e0e0;
+    --bg-gradient-start: #0f0f0f;
+    --bg-gradient-end: #1a1a1a;
+    --text-primary: #e0e0e0;
+    --text-secondary: #999;
+    --text-title: #ffffff;
+    --bg-card: rgba(30, 30, 30, 0.9);
+    --bg-card-secondary: rgba(40, 40, 40, 0.6);
+    --bg-input: rgba(50, 50, 50, 0.8);
+    --border-color: rgba(60, 60, 60, 0.3);
+    --accent-color: #4a90e2;
+
+    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    color: var(--text-primary);
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
+    transition: all 0.3s ease;
+}
+
+/* Dayモード */
+body.theme-day {
+    --bg-gradient-start: #e8e8e8;
+    --bg-gradient-end: #f5f5f5;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666;
+    --text-title: #000000;
+    --bg-card: rgba(255, 255, 255, 0.9);
+    --bg-card-secondary: rgba(240, 240, 240, 0.9);
+    --bg-input: rgba(250, 250, 250, 0.9);
+    --border-color: rgba(200, 200, 200, 0.5);
+    --accent-color: #4a90e2;
+}
+
+/* ピンクモード */
+body.theme-pink {
+    --text-primary: #ff10f0;
+    --text-secondary: #ff10f0;
+    --text-title: #ff10f0;
+    --accent-color: #ff10f0;
 }
 
 .app {
-    background: rgba(30, 30, 30, 0.9);
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(60, 60, 60, 0.3);
+    border: 1px solid var(--border-color);
     border-radius: 20px;
     padding: 40px;
     width: 100%;
     max-width: 480px;
-    box-shadow: 
+    box-shadow:
         0 20px 40px rgba(0, 0, 0, 0.3),
         0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    transition: all 0.3s ease;
 }
 
 .header {
     text-align: center;
     margin-bottom: 32px;
+    position: relative;
+}
+
+.theme-switcher {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.theme-btn {
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.theme-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.theme-btn.active {
+    background: var(--accent-color);
+    color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 h1 {
     font-size: 36px;
     font-weight: 300;
     letter-spacing: 8px;
-    color: #ffffff;
+    color: var(--text-title);
     position: relative;
+    transition: color 0.3s ease;
 }
 
 .version {
     font-size: 12px;
     font-weight: 400;
-    color: #888;
+    color: var(--text-secondary);
     position: absolute;
     top: 8px;
     margin-left: 8px;
     letter-spacing: 1px;
+    transition: color 0.3s ease;
 }
 
 .main {
@@ -81,9 +153,9 @@ h1 {
 }
 
 .select-btn {
-    background: rgba(60, 60, 60, 0.8);
-    color: #e0e0e0;
-    border: 1px solid rgba(80, 80, 80, 0.5);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
 }
 
 .select-btn:hover {
@@ -93,9 +165,9 @@ h1 {
 }
 
 .select-multiple-btn {
-    background: rgba(60, 60, 60, 0.8);
-    color: #e0e0e0;
-    border: 1px solid rgba(80, 80, 80, 0.5);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
     width: 100%;
 }
 
@@ -130,10 +202,10 @@ h1 {
 }
 
 .video-info {
-    background: rgba(40, 40, 40, 0.6);
+    background: var(--bg-card-secondary);
     border-radius: 16px;
     padding: 20px;
-    border: 1px solid rgba(80, 80, 80, 0.2);
+    border: 1px solid var(--border-color);
 }
 
 .info-row {
@@ -149,12 +221,12 @@ h1 {
 }
 
 .label {
-    color: #999;
+    color: var(--text-secondary);
     font-weight: 500;
 }
 
 .value {
-    color: #e0e0e0;
+    color: var(--text-primary);
     font-weight: 400;
 }
 
@@ -185,13 +257,13 @@ h1 {
 .control-label {
     font-size: 15px;
     font-weight: 500;
-    color: #e0e0e0;
+    color: var(--text-primary);
 }
 
 .loop-input {
-    background: rgba(50, 50, 50, 0.8);
-    border: 1px solid rgba(80, 80, 80, 0.5);
-    color: #e0e0e0;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
     padding: 12px 16px;
     border-radius: 8px;
     width: 80px;
@@ -219,13 +291,13 @@ h1 {
 
 .total-label {
     font-size: 14px;
-    color: #999;
+    color: var(--text-secondary);
 }
 
 .total-value {
     font-size: 15px;
     font-weight: 600;
-    color: #4a90e2;
+    color: var(--accent-color);
 }
 
 .progress {
@@ -373,7 +445,7 @@ h1 {
 .file-count {
     font-size: 14px;
     font-weight: 600;
-    color: #4a90e2;
+    color: var(--accent-color);
 }
 
 .btn-small {
@@ -407,10 +479,10 @@ h1 {
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    background: rgba(50, 50, 50, 0.5);
+    background: var(--bg-input);
     border-radius: 8px;
     font-size: 13px;
-    color: #e0e0e0;
+    color: var(--text-primary);
 }
 
 .file-item-name {
@@ -444,5 +516,5 @@ h1 {
 .batch-progress-text {
     font-size: 14px;
     font-weight: 600;
-    color: #4a90e2;
+    color: var(--accent-color);
 }
