@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
     "dev": "electron . --dev"
   },
   "author": "Developer",
@@ -13,10 +15,60 @@
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
-    "electron": "^28.0.0",
     "fluent-ffmpeg": "^2.1.2"
   },
   "devDependencies": {
+    "electron": "^28.0.0",
     "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.developer.lop",
+    "productName": "LOP",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "renderer.js", 
+      "styles.css",
+      "package.json",
+      "node_modules/**/*",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/@ffmpeg-installer/darwin-arm64/ffmpeg",
+        "to": "bin/ffmpeg",
+        "filter": "**/*"
+      },
+      {
+        "from": "node_modules/@ffprobe-installer/darwin-arm64/ffprobe",
+        "to": "bin/ffprobe", 
+        "filter": "**/*"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "artifactName": "LOP-${version}-Mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    }
   }
 }

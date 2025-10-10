@@ -4,9 +4,74 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
 
-// FFmpegのパスを自動設定
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+// FFmpegバイナリのパス設定
+const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+const fs = require('fs');
+
+function setupFFmpegPaths() {
+  if (isDev) {
+    // 開発時：@ffmpeg-installerからバイナリを使用
+    console.log('開発モード: @ffmpeg-installerを使用');
+    try {
+      ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+      ffmpeg.setFfprobePath(ffprobeInstaller.path);
+      console.log('FFmpeg開発パス設定完了:', ffmpegInstaller.path);
+    } catch (error) {
+      console.error('FFmpeg開発パス設定エラー:', error);
+    }
+  } else {
+    // 本番時：アプリリソース内のバイナリを使用
+    console.log('本番モード: 内蔵FFmpegを使用');
+    
+    // アプリにバンドルされたFFmpegバイナリを使用
+    const resourcesPath = process.resourcesPath;
+    const ffmpegPath = path.join(resourcesPath, 'bin', 'ffmpeg');
+    const ffprobePath = path.join(resourcesPath, 'bin', 'ffprobe');
+    
+    console.log('アーキテクチャ:', process.arch);
+    console.log('リソースパス:', resourcesPath);
+    console.log('FFmpegパス:', ffmpegPath);
+    
+    if (fs.existsSync(ffmpegPath)) {
+      // バイナリを実行可能にする
+      try {
+        fs.chmodSync(ffmpegPath, '755');
+        ffmpeg.setFfmpegPath(ffmpegPath);
+        console.log('FFmpeg内蔵バイナリを使用:', ffmpegPath);
+      } catch (error) {
+        console.error('FFmpegバイナリの権限設定エラー:', error);
+      }
+    } else {
+      console.warn('FFmpeg内蔵バイナリが見つかりません。フォールバックを試します。');
+      try {
+        ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+        console.log('フォールバック: @ffmpeg-installer使用');
+      } catch (error) {
+        console.error('FFmpegの設定に失敗しました:', error);
+      }
+    }
+    
+    if (fs.existsSync(ffprobePath)) {
+      try {
+        fs.chmodSync(ffprobePath, '755');
+        ffmpeg.setFfprobePath(ffprobePath);
+        console.log('FFprobe内蔵バイナリを使用:', ffprobePath);
+      } catch (error) {
+        console.error('FFprobeバイナリの権限設定エラー:', error);
+      }
+    } else {
+      try {
+        ffmpeg.setFfprobePath(ffprobeInstaller.path);
+        console.log('フォールバック: @ffprobe-installer使用');
+      } catch (error) {
+        console.error('FFprobeの設定に失敗しました:', error);
+      }
+    }
+  }
+}
+
+// FFmpegパス初期化
+setupFFmpegPaths();
 
 let mainWindow;
 
@@ -86,6 +151,9 @@ function generateSequentialFilename(basePath, baseName, extension) {
 // ループ動画生成
 ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
   return new Promise((resolve, reject) => {
+    console.log('=== ループ生成開始 ===');
+    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed });
+    console.log('loopCountの型:', typeof loopCount, 'loopCountの値:', loopCount);
     const fs = require('fs');
     const os = require('os');
     
@@ -93,47 +161,71 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
     const tempDir = path.join(os.tmpdir(), 'loop-tool-' + Date.now());
     fs.mkdirSync(tempDir, { recursive: true });
     
-    // 総進行状況の管理
-    let currentStep = 0;
-    const totalSteps = loopCount * 2; // 正再生 + 逆再生 の組み合わせ
-    
-    const updateOverallProgress = (stepProgress = 100) => {
-      const overallProgress = ((currentStep + (stepProgress / 100)) / totalSteps) * 100;
-      event.sender.send('progress-update', Math.min(overallProgress, 100));
+    // 進行状況更新関数
+    const updateOverallProgress = (progress = 0) => {
+      event.sender.send('progress-update', Math.min(progress, 100));
     };
     
-    // フィルターグラフを構築
-    let filterComplex = '';
-    let inputMaps = '';
+    // メモリ効率を改善した実装
+    let filterComplex;
     
-    for (let i = 0; i < loopCount; i++) {
-      if (randomSpeed) {
-        // ランダム速度適用
-        const forwardSpeed = generateRandomSpeed(minSpeed, maxSpeed);
-        const reverseSpeed = generateRandomSpeed(minSpeed, maxSpeed);
-        
-        filterComplex += `[0:v]setpts=PTS/${forwardSpeed}[forward${i}];`;
-        filterComplex += `[0:v]reverse,setpts=PTS/${reverseSpeed}[reverse${i}];`;
-      } else {
-        // 通常速度
-        filterComplex += `[0:v]copy[forward${i}];`;
-        filterComplex += `[0:v]reverse[reverse${i}];`;
+    // ループ数に基づいて適切な方法を選択
+    if (loopCount <= 2) {
+      // 少ないループ数：直接処理
+      let filterParts = [];
+      let concatInputs = '';
+      
+      for (let i = 0; i < loopCount; i++) {
+        filterParts.push(`[0:v]copy[forward${i}]`);
+        filterParts.push(`[0:v]reverse[reverse${i}]`);
+        concatInputs += `[forward${i}][reverse${i}]`;
       }
       
-      inputMaps += `[forward${i}][reverse${i}]`;
+      filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+      filterComplex = filterParts.join(';');
+    } else {
+      // 多いループ数：分割処理でメモリ効率を改善
+      // まず1つのループパターンを作成し、それを繰り返す
+      filterComplex = `[0:v]split=${loopCount}`;
+      
+      // 分割された各ストリームを処理
+      for (let i = 0; i < loopCount; i++) {
+        filterComplex += `[s${i}]`;
+      }
+      filterComplex += ';';
+      
+      // 各ストリームをforward/reverseペアに
+      let concatInputs = '';
+      for (let i = 0; i < loopCount; i++) {
+        filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
+        filterComplex += `[r${i}]reverse[rev${i}];`;
+        concatInputs += `[f${i}][rev${i}]`;
+      }
+      
+      filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
     }
     
-    // すべてを連結
-    filterComplex += `${inputMaps}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+    console.log('ループ数:', loopCount, '使用フィルター:', filterComplex);
     
-    // FFmpegコマンドを実行
+    // タイムアウト設定 (10分)
+    const timeout = setTimeout(() => {
+      console.log('FFmpeg処理がタイムアウトしました');
+      command.kill('SIGKILL');
+      resolve({ success: false, error: '処理がタイムアウトしました（10分経過）' });
+    }, 600000); // 10分
+
+    // メモリ効率を重視した設定
     const command = ffmpeg(inputPath)
       .complexFilter(filterComplex)
       .outputOptions([
         '-map', '[output]',
         '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', '23'
+        '-preset', 'ultrafast',      // 最速プリセット
+        '-crf', '30',                // 圧縮率を上げる
+        '-threads', '1',             // シングルスレッド
+        '-max_muxing_queue_size', '512',  // キューサイズ制限
+        '-bufsize', '1M',            // バッファサイズ制限
+        '-maxrate', '2M'             // 最大ビットレート制限
       ])
       .output(outputPath)
       .on('start', (commandLine) => {
@@ -144,6 +236,7 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
         updateOverallProgress(progress.percent || 0);
       })
       .on('end', () => {
+        clearTimeout(timeout); // タイムアウトをクリア
         // 一時ディレクトリのクリーンアップ
         fs.rmSync(tempDir, { recursive: true, force: true });
         
@@ -151,6 +244,7 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
         resolve({ success: true, outputPath: outputPath });
       })
       .on('error', (err) => {
+        clearTimeout(timeout); // タイムアウトをクリア
         // エラー時も一時ディレクトリをクリーンアップ
         fs.rmSync(tempDir, { recursive: true, force: true });
         
