@@ -264,6 +264,12 @@ async function processBatchFiles() {
     }
 
     try {
+        // 保存先フォルダを選択
+        const outputDir = await ipcRenderer.invoke('select-batch-output-directory');
+        if (!outputDir) {
+            return; // キャンセルされた
+        }
+
         // UI状態の更新
         generateBtn.disabled = true;
         generateBtn.innerHTML = '<span class="icon">⏳</span><span>一括処理中...</span>';
@@ -280,11 +286,12 @@ async function processBatchFiles() {
             loopCount: parseInt(loopCount.value),
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
-            maxSpeed: parseFloat(maxSpeed.value)
+            maxSpeed: parseFloat(maxSpeed.value),
+            outputDir: outputDir
         });
 
         if (result.success) {
-            showSuccess(`完了: ${totalFiles}個のファイルを処理しました`);
+            showSuccess(`完了: ${totalFiles}個のファイルを処理しました\n保存先: ${result.outputDir}`);
             updateProgress(100);
             batchProgressText.textContent = `${totalFiles} / ${totalFiles} ファイル完了`;
         } else {
@@ -394,7 +401,7 @@ function renderFileList() {
 function updateButtonText() {
     if (isBatchMode) {
         generateBtnText.textContent = `${selectedFiles.length}個のループ動画を一括出力`;
-        outputNoteText.textContent = '※ LOPCOMPフォルダに保存されます';
+        outputNoteText.textContent = '※ 保存先フォルダを選択できます';
     } else {
         generateBtnText.textContent = 'ループ動画を出力';
         outputNoteText.textContent = '※ 連番ファイル名で自動保存 (例: video_loop_001.mp4)';

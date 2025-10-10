@@ -140,6 +140,20 @@ ipcMain.handle('select-multiple-video-files', async () => {
   return null;
 });
 
+// バッチ処理の保存先フォルダ選択
+ipcMain.handle('select-batch-output-directory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'ループ動画の保存先フォルダを選択',
+    buttonLabel: '選択'
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
+});
+
 // ランダム速度生成関数
 function generateRandomSpeed(min, max) {
   return (Math.random() * (max - min) + min).toFixed(2);
@@ -299,21 +313,24 @@ ipcMain.handle('select-output-path', async (event, inputFileName) => {
 });
 
 // バッチ処理：複数ファイルを一括でループ化
-ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
+ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null }) => {
   try {
     console.log('=== バッチ処理開始 ===');
     console.log('ファイル数:', inputPaths.length);
     console.log('ループ回数:', loopCount);
+    console.log('保存先:', outputDir);
 
-    const os = require('os');
-
-    // LOPCOMPフォルダをホームディレクトリに作成
-    const homeDir = os.homedir();
-    const outputDir = path.join(homeDir, 'LOPCOMP');
+    // 保存先フォルダの確認・作成
+    if (!outputDir) {
+      // outputDirが指定されていない場合は従来通りホームディレクトリのLOPCOMP
+      const os = require('os');
+      const homeDir = os.homedir();
+      outputDir = path.join(homeDir, 'LOPCOMP');
+    }
 
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
-      console.log('LOPCOMPフォルダを作成:', outputDir);
+      console.log('保存先フォルダを作成:', outputDir);
     }
 
     const totalFiles = inputPaths.length;
