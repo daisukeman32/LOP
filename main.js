@@ -187,7 +187,7 @@ function generateSequentialFilename(basePath, baseName, extension) {
 }
 
 // ループ動画生成
-ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
+ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, isReverseMode = true, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
   return new Promise((resolve, reject) => {
     console.log('=== ループ生成開始 ===');
     console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed });
@@ -206,41 +206,44 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
     
     // メモリ効率を改善した実装
     let filterComplex;
-    
-    // ループ数に基づいて適切な方法を選択
-    if (loopCount <= 2) {
-      // 少ないループ数：直接処理
+
+    if (isReverseMode) {
+      // Reverseモード: 1234-321-234-321 (最初と最後のフレームを除去して滑らか)
       let filterParts = [];
       let concatInputs = '';
-      
-      for (let i = 0; i < loopCount; i++) {
-        filterParts.push(`[0:v]copy[forward${i}]`);
-        filterParts.push(`[0:v]reverse[reverse${i}]`);
+
+      // 最初のループ: 完全な forward + reverse（最後のフレーム除去）
+      filterParts.push(`[0:v]copy[forward0]`);
+      filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse0]`);
+      concatInputs += `[forward0][reverse0]`;
+
+      // 2回目以降: 最初と最後のフレームを除去
+      for (let i = 1; i < loopCount; i++) {
+        filterParts.push(`[0:v]trim=start_frame=1,copy[forward${i}]`);
+        filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse${i}]`);
         concatInputs += `[forward${i}][reverse${i}]`;
       }
-      
+
       filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
       filterComplex = filterParts.join(';');
     } else {
-      // 多いループ数：分割処理でメモリ効率を改善
-      // まず1つのループパターンを作成し、それを繰り返す
-      filterComplex = `[0:v]split=${loopCount}`;
-      
-      // 分割された各ストリームを処理
-      for (let i = 0; i < loopCount; i++) {
-        filterComplex += `[s${i}]`;
-      }
-      filterComplex += ';';
-      
-      // 各ストリームをforward/reverseペアに
+      // Forwardモード: 12345-2345-2345 (Mac版と同じロジック)
+      // 高FPS対応：フレーム単位ではなくPTS（時間）ベースで処理
+      let filterParts = [];
       let concatInputs = '';
-      for (let i = 0; i < loopCount; i++) {
-        filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
-        filterComplex += `[r${i}]reverse[rev${i}];`;
-        concatInputs += `[f${i}][rev${i}]`;
+
+      // 最初のループ: 完全な動画
+      filterParts.push(`[0:v]copy[forward0]`);
+      concatInputs += `[forward0]`;
+
+      // 2回目以降: select filterで最初のフレームを除外
+      for (let i = 1; i < loopCount; i++) {
+        filterParts.push(`[0:v]select='gte(n\\,1)',setpts=PTS-STARTPTS[forward${i}]`);
+        concatInputs += `[forward${i}]`;
       }
-      
-      filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+
+      filterParts.push(`${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`);
+      filterComplex = filterParts.join(';');
     }
     
     console.log('ループ数:', loopCount, '使用フィルター:', filterComplex);
@@ -252,18 +255,18 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
       resolve({ success: false, error: '処理がタイムアウトしました（10分経過）' });
     }, 600000); // 10分
 
-    // メモリ効率を重視した設定
+    // 超高画質設定（4K + 高FPS対応）
     const command = ffmpeg(inputPath)
       .complexFilter(filterComplex)
       .outputOptions([
         '-map', '[output]',
         '-c:v', 'libx264',
-        '-preset', 'ultrafast',      // 最速プリセット
-        '-crf', '30',                // 圧縮率を上げる
-        '-threads', '1',             // シングルスレッド
-        '-max_muxing_queue_size', '512',  // キューサイズ制限
-        '-bufsize', '1M',            // バッファサイズ制限
-        '-maxrate', '2M'             // 最大ビットレート制限
+        '-preset', 'slow',           // 高品質プリセット
+        '-crf', '15',                // 超高画質（15はほぼ完全無劣化）
+        '-pix_fmt', 'yuv420p',       // 互換性の高いピクセルフォーマット
+        '-movflags', '+faststart',   // Web再生用の最適化
+        '-bf', '2',                  // Bフレーム数
+        '-g', '300'                  // GOPサイズ（フレームレートと同じに設定）
       ])
       .output(outputPath)
       .on('start', (commandLine) => {
@@ -322,7 +325,7 @@ ipcMain.handle('select-output-path', async (event, inputFileName) => {
 });
 
 // バッチ処理：複数ファイルを一括でループ化
-ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null }) => {
+ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, isReverseMode = true, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null }) => {
   try {
     console.log('=== バッチ処理開始 ===');
     console.log('ファイル数:', inputPaths.length);
@@ -376,34 +379,41 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
           // メモリ効率を改善した実装
           let filterComplex;
 
-          if (loopCount <= 2) {
+          if (isReverseMode) {
+            // Reverseモード: 1234-321-234-321
             let filterParts = [];
             let concatInputs = '';
 
-            for (let i = 0; i < loopCount; i++) {
-              filterParts.push(`[0:v]copy[forward${i}]`);
-              filterParts.push(`[0:v]reverse[reverse${i}]`);
+            filterParts.push(`[0:v]copy[forward0]`);
+            filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse0]`);
+            concatInputs += `[forward0][reverse0]`;
+
+            for (let i = 1; i < loopCount; i++) {
+              filterParts.push(`[0:v]trim=start_frame=1,copy[forward${i}]`);
+              filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse${i}]`);
               concatInputs += `[forward${i}][reverse${i}]`;
             }
 
             filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
             filterComplex = filterParts.join(';');
           } else {
-            filterComplex = `[0:v]split=${loopCount}`;
-
-            for (let i = 0; i < loopCount; i++) {
-              filterComplex += `[s${i}]`;
-            }
-            filterComplex += ';';
-
+            // Forwardモード: 12345-2345-2345 (Mac版と同じロジック)
+            // 高FPS対応：select filterで最初のフレームを除外
+            let filterParts = [];
             let concatInputs = '';
-            for (let i = 0; i < loopCount; i++) {
-              filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
-              filterComplex += `[r${i}]reverse[rev${i}];`;
-              concatInputs += `[f${i}][rev${i}]`;
+
+            // 最初のループ: 完全な動画
+            filterParts.push(`[0:v]copy[forward0]`);
+            concatInputs += `[forward0]`;
+
+            // 2回目以降: select filterで最初のフレームを除外
+            for (let i = 1; i < loopCount; i++) {
+              filterParts.push(`[0:v]select='gte(n\\,1)',setpts=PTS-STARTPTS[forward${i}]`);
+              concatInputs += `[forward${i}]`;
             }
 
-            filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+            filterParts.push(`${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`);
+            filterComplex = filterParts.join(';');
           }
 
           const timeout = setTimeout(() => {
@@ -417,12 +427,12 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
             .outputOptions([
               '-map', '[output]',
               '-c:v', 'libx264',
-              '-preset', 'ultrafast',
-              '-crf', '30',
-              '-threads', '1',
-              '-max_muxing_queue_size', '512',
-              '-bufsize', '1M',
-              '-maxrate', '2M'
+              '-preset', 'slow',
+              '-crf', '15',
+              '-pix_fmt', 'yuv420p',
+              '-movflags', '+faststart',
+              '-bf', '2',
+              '-g', '300'
             ])
             .output(outputPath)
             .on('start', (commandLine) => {

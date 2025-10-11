@@ -8,6 +8,9 @@ let videoDurationSeconds = 0;
 let selectedFiles = [];
 let isBatchMode = false;
 
+// ループモードの変数
+let isReverseMode = true; // デフォルトはReverse
+
 // DOM要素の取得
 const selectFileBtn = document.getElementById('selectFileBtn');
 const selectMultipleBtn = document.getElementById('selectMultipleBtn');
@@ -39,6 +42,10 @@ const fileCount = document.querySelector('.file-count');
 const clearFilesBtn = document.getElementById('clearFilesBtn');
 const batchProgress = document.getElementById('batchProgress');
 const batchProgressText = document.getElementById('batchProgressText');
+
+// モードボタン
+const modeReverse = document.getElementById('modeReverse');
+const modeForward = document.getElementById('modeForward');
 
 // ファイル選択ボタンのクリック処理
 selectFileBtn.addEventListener('click', async () => {
@@ -165,6 +172,19 @@ function resetVideoInfo() {
 // ループ回数変更時の処理
 loopCount.addEventListener('change', updateTotalDuration);
 
+// モードボタンのクリック処理
+modeReverse.addEventListener('click', () => {
+    isReverseMode = true;
+    modeReverse.classList.add('active');
+    modeForward.classList.remove('active');
+});
+
+modeForward.addEventListener('click', () => {
+    isReverseMode = false;
+    modeForward.classList.add('active');
+    modeReverse.classList.remove('active');
+});
+
 // ランダム速度チェックボックス変更時
 randomSpeed.addEventListener('change', () => {
     speedControls.style.display = randomSpeed.checked ? 'block' : 'none';
@@ -232,6 +252,7 @@ async function processSingleFile() {
             inputPath: selectedVideoPath,
             loopCount: parseInt(loopCount.value),
             outputPath: outputPath,
+            isReverseMode: isReverseMode,
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
             maxSpeed: parseFloat(maxSpeed.value)
@@ -284,6 +305,7 @@ async function processBatchFiles() {
         const result = await ipcRenderer.invoke('generate-batch-loop', {
             inputPaths: selectedFiles,
             loopCount: parseInt(loopCount.value),
+            isReverseMode: isReverseMode,
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
             maxSpeed: parseFloat(maxSpeed.value),
