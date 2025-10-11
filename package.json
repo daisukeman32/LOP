@@ -10,7 +10,7 @@
     "rename": "node rename-builds.js",
     "build": "npm run obfuscate && electron-builder; npm run restore && npm run rename",
     "build:mac": "npm run obfuscate && electron-builder --mac; npm run restore && npm run rename",
-    "build:win": "npm run obfuscate && electron-builder --win; npm run restore",
+    "build:win": "npm run obfuscate && electron-builder --win && npm run restore && npm run rename",
     "dev": "electron . --dev"
   },
   "author": "Developer",
@@ -68,6 +68,7 @@
     "win": {
       "icon": "LPOicon.png",
       "artifactName": "LOP-${version}-Windows-${arch}.${ext}",
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",

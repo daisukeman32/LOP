@@ -7,6 +7,7 @@ const distDir = path.join(__dirname, 'dist');
 
 // リネーム対象ファイルのマッピング
 const renameMap = {
+  // Mac
   'LOP-2.0.0-Mac-x64.dmg': 'LOP-2.0.0-Mac-Intel.dmg',
   'LOP-2.0.0-Mac-x64.dmg.blockmap': 'LOP-2.0.0-Mac-Intel.dmg.blockmap',
   'LOP-2.0.0-Mac-x64.zip': 'LOP-2.0.0-Mac-Intel.zip',
@@ -14,7 +15,12 @@ const renameMap = {
   'LOP-2.0.0-Mac-arm64.dmg': 'LOP-2.0.0-Mac-Apple_s.dmg',
   'LOP-2.0.0-Mac-arm64.dmg.blockmap': 'LOP-2.0.0-Mac-Apple_s.dmg.blockmap',
   'LOP-2.0.0-Mac-arm64.zip': 'LOP-2.0.0-Mac-Apple_s.zip',
-  'LOP-2.0.0-Mac-arm64.zip.blockmap': 'LOP-2.0.0-Mac-Apple_s.zip.blockmap'
+  'LOP-2.0.0-Mac-arm64.zip.blockmap': 'LOP-2.0.0-Mac-Apple_s.zip.blockmap',
+
+  // Windows
+  'LOP-2.0.0-Windows-x64.exe': 'LOP-2.0.0-Windows-64bit.exe',
+  'LOP-2.0.0-Windows-x64.exe.blockmap': 'LOP-2.0.0-Windows-64bit.exe.blockmap',
+  'LOP-2.0.0-Windows-x64.zip': 'LOP-2.0.0-Windows-64bit.zip'
 };
 
 // 各ファイルをリネーム
