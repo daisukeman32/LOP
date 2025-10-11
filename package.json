@@ -23,7 +23,11 @@
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0",
-    "javascript-obfuscator": "^4.1.1"
+    "electron-icon-builder": "^2.0.1",
+    "javascript-obfuscator": "^4.1.1",
+    "png-to-ico": "^3.0.1",
+    "rcedit": "^4.0.1",
+    "sharp": "^0.34.4"
   },
   "build": {
     "appId": "com.developer.lop",
@@ -33,8 +37,10 @@
       "node_modules/@ffmpeg-installer/**/*",
       "node_modules/@ffprobe-installer/**/*"
     ],
+    "afterPack": "./afterPack.js",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "main.js",
@@ -42,6 +48,8 @@
       "renderer.js",
       "styles.css",
       "package.json",
+      "LPOicon.ico",
+      "LPOicon.png",
       "node_modules/**/*"
     ],
     "mac": {
@@ -66,7 +74,7 @@
       ]
     },
     "win": {
-      "icon": "LPOicon.png",
+      "icon": "LPOicon.ico",
       "artifactName": "LOP-${version}-Windows-${arch}.${ext}",
       "signAndEditExecutable": false,
       "target": [
@@ -83,6 +91,10 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
     },
     "linux": {
       "icon": "LPOicon.png",
