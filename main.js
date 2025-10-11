@@ -20,48 +20,52 @@ function setupFFmpegPaths() {
       console.error('FFmpeg開発パス設定エラー:', error);
     }
   } else {
-    // 本番時：ASARアンパックされたバイナリを使用
-    console.log('本番モード: ASARアンパック版FFmpegを使用');
-
-    // @ffmpeg-installerのパスを取得し、.asarを.asar.unpackedに置換
-    let ffmpegPath = ffmpegInstaller.path;
-    let ffprobePath = ffprobeInstaller.path;
-
-    // ASARアーカイブ内のパスの場合、.asar.unpackedに置換
-    if (ffmpegPath.includes('.asar')) {
-      ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
-    }
-    if (ffprobePath.includes('.asar')) {
-      ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked');
-    }
-
+    // 本番時：アプリリソース内のバイナリを使用
+    console.log('本番モード: 内蔵FFmpegを使用');
+    
+    // アプリにバンドルされたFFmpegバイナリを使用
+    const resourcesPath = process.resourcesPath;
+    const ffmpegPath = path.join(resourcesPath, 'bin', 'ffmpeg');
+    const ffprobePath = path.join(resourcesPath, 'bin', 'ffprobe');
+    
     console.log('アーキテクチャ:', process.arch);
+    console.log('リソースパス:', resourcesPath);
     console.log('FFmpegパス:', ffmpegPath);
-    console.log('FFprobeパス:', ffprobePath);
-
-    // パスの存在確認とパーミッション設定
+    
     if (fs.existsSync(ffmpegPath)) {
+      // バイナリを実行可能にする
       try {
         fs.chmodSync(ffmpegPath, '755');
         ffmpeg.setFfmpegPath(ffmpegPath);
-        console.log('✅ FFmpegパス設定成功:', ffmpegPath);
+        console.log('FFmpeg内蔵バイナリを使用:', ffmpegPath);
       } catch (error) {
-        console.error('FFmpegパーミッション設定エラー:', error);
+        console.error('FFmpegバイナリの権限設定エラー:', error);
       }
     } else {
-      console.error('❌ FFmpegバイナリが見つかりません:', ffmpegPath);
+      console.warn('FFmpeg内蔵バイナリが見つかりません。フォールバックを試します。');
+      try {
+        ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+        console.log('フォールバック: @ffmpeg-installer使用');
+      } catch (error) {
+        console.error('FFmpegの設定に失敗しました:', error);
+      }
     }
-
+    
     if (fs.existsSync(ffprobePath)) {
       try {
         fs.chmodSync(ffprobePath, '755');
         ffmpeg.setFfprobePath(ffprobePath);
-        console.log('✅ FFprobeパス設定成功:', ffprobePath);
+        console.log('FFprobe内蔵バイナリを使用:', ffprobePath);
       } catch (error) {
-        console.error('FFprobeパーミッション設定エラー:', error);
+        console.error('FFprobeバイナリの権限設定エラー:', error);
       }
     } else {
-      console.error('❌ FFprobeバイナリが見つかりません:', ffprobePath);
+      try {
+        ffmpeg.setFfprobePath(ffprobeInstaller.path);
+        console.log('フォールバック: @ffprobe-installer使用');
+      } catch (error) {
+        console.error('FFprobeの設定に失敗しました:', error);
+      }
     }
   }
 }
@@ -75,17 +79,26 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    show: false, // ウィンドウの準備ができるまで非表示
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
       enableRemoteModule: true
     },
-    icon: path.join(__dirname, 'icon.png'),
-    title: 'るーぷツール v1.0'
+    icon: path.join(__dirname, 'LPOicon.png'),
+    title: 'LOP v2.0',
+    center: true, // ウィンドウを画面中央に配置
+    backgroundColor: '#1a1a1a' // 背景色を設定してちらつき防止
+  });
+
+  // ウィンドウの準備ができてから表示
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    mainWindow.focus(); // ウィンドウにフォーカス
   });
 
   mainWindow.loadFile('index.html');
-  
+
   // 開発時はDevToolsを開く
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
@@ -174,10 +187,10 @@ function generateSequentialFilename(basePath, baseName, extension) {
 }
 
 // ループ動画生成
-ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, loopMode = 'reverse' }) => {
+ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
   return new Promise((resolve, reject) => {
     console.log('=== ループ生成開始 ===');
-    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed, loopMode });
+    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed });
     console.log('loopCountの型:', typeof loopCount, 'loopCountの値:', loopCount);
     const fs = require('fs');
     const os = require('os');
@@ -193,69 +206,41 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
     
     // メモリ効率を改善した実装
     let filterComplex;
-
+    
     // ループ数に基づいて適切な方法を選択
     if (loopCount <= 2) {
       // 少ないループ数：直接処理
       let filterParts = [];
       let concatInputs = '';
-
-      if (loopMode === 'forward') {
-        // Forwardモード：正再生 → 正再生（フレーム重複回避）
-        // 最初のループ: 全フレーム、2回目以降: 最初のフレームをスキップ
-        filterParts.push(`[0:v]copy[v0]`);
-        concatInputs += `[v0]`;
-
-        for (let i = 1; i < loopCount; i++) {
-          filterParts.push(`[0:v]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
-          concatInputs += `[v${i}]`;
-        }
-
-        filterParts.push(`${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`);
-      } else {
-        // Reverseモード（デフォルト）：正再生 → 逆再生
-        for (let i = 0; i < loopCount; i++) {
-          filterParts.push(`[0:v]copy[forward${i}]`);
-          filterParts.push(`[0:v]reverse[reverse${i}]`);
-          concatInputs += `[forward${i}][reverse${i}]`;
-        }
-
-        filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+      
+      for (let i = 0; i < loopCount; i++) {
+        filterParts.push(`[0:v]copy[forward${i}]`);
+        filterParts.push(`[0:v]reverse[reverse${i}]`);
+        concatInputs += `[forward${i}][reverse${i}]`;
       }
+      
+      filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
       filterComplex = filterParts.join(';');
     } else {
       // 多いループ数：分割処理でメモリ効率を改善
+      // まず1つのループパターンを作成し、それを繰り返す
       filterComplex = `[0:v]split=${loopCount}`;
-
+      
       // 分割された各ストリームを処理
       for (let i = 0; i < loopCount; i++) {
         filterComplex += `[s${i}]`;
       }
       filterComplex += ';';
-
-      // 各ストリームをforward/reverseペアまたはforward/forwardペアに
+      
+      // 各ストリームをforward/reverseペアに
       let concatInputs = '';
-      if (loopMode === 'forward') {
-        // Forwardモード：最初は全フレーム、以降は最初のフレームをスキップ
-        filterComplex += `[s0]copy[v0];`;
-        concatInputs += `[v0]`;
-
-        for (let i = 1; i < loopCount; i++) {
-          filterComplex += `[s${i}]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}];`;
-          concatInputs += `[v${i}]`;
-        }
-
-        filterComplex += `${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`;
-      } else {
-        // Reverseモード：各ストリームをforward/reverseに分割
-        for (let i = 0; i < loopCount; i++) {
-          filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
-          filterComplex += `[r${i}]reverse[rev${i}];`;
-          concatInputs += `[f${i}][rev${i}]`;
-        }
-
-        filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+      for (let i = 0; i < loopCount; i++) {
+        filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
+        filterComplex += `[r${i}]reverse[rev${i}];`;
+        concatInputs += `[f${i}][rev${i}]`;
       }
+      
+      filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
     }
     
     console.log('ループ数:', loopCount, '使用フィルター:', filterComplex);
@@ -337,12 +322,11 @@ ipcMain.handle('select-output-path', async (event, inputFileName) => {
 });
 
 // バッチ処理：複数ファイルを一括でループ化
-ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null, loopMode = 'reverse' }) => {
+ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null }) => {
   try {
     console.log('=== バッチ処理開始 ===');
     console.log('ファイル数:', inputPaths.length);
     console.log('ループ回数:', loopCount);
-    console.log('再生モード:', loopMode);
     console.log('保存先:', outputDir);
 
     // 保存先フォルダの確認・作成
@@ -396,27 +380,13 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
             let filterParts = [];
             let concatInputs = '';
 
-            if (loopMode === 'forward') {
-              // Forwardモード：正再生 → 正再生（フレーム重複回避）
-              filterParts.push(`[0:v]copy[v0]`);
-              concatInputs += `[v0]`;
-
-              for (let i = 1; i < loopCount; i++) {
-                filterParts.push(`[0:v]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
-                concatInputs += `[v${i}]`;
-              }
-
-              filterParts.push(`${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`);
-            } else {
-              // Reverseモード（デフォルト）：正再生 → 逆再生
-              for (let i = 0; i < loopCount; i++) {
-                filterParts.push(`[0:v]copy[forward${i}]`);
-                filterParts.push(`[0:v]reverse[reverse${i}]`);
-                concatInputs += `[forward${i}][reverse${i}]`;
-              }
-
-              filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+            for (let i = 0; i < loopCount; i++) {
+              filterParts.push(`[0:v]copy[forward${i}]`);
+              filterParts.push(`[0:v]reverse[reverse${i}]`);
+              concatInputs += `[forward${i}][reverse${i}]`;
             }
+
+            filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
             filterComplex = filterParts.join(';');
           } else {
             filterComplex = `[0:v]split=${loopCount}`;
@@ -427,27 +397,13 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, ran
             filterComplex += ';';
 
             let concatInputs = '';
-            if (loopMode === 'forward') {
-              // Forwardモード：最初は全フレーム、以降は最初のフレームをスキップ
-              filterComplex += `[s0]copy[v0];`;
-              concatInputs += `[v0]`;
-
-              for (let i = 1; i < loopCount; i++) {
-                filterComplex += `[s${i}]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}];`;
-                concatInputs += `[v${i}]`;
-              }
-
-              filterComplex += `${concatInputs}concat=n=${loopCount}:v=1:a=0[output]`;
-            } else {
-              // Reverseモード：各ストリームをforward/reverseに分割
-              for (let i = 0; i < loopCount; i++) {
-                filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
-                filterComplex += `[r${i}]reverse[rev${i}];`;
-                concatInputs += `[f${i}][rev${i}]`;
-              }
-
-              filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
+            for (let i = 0; i < loopCount; i++) {
+              filterComplex += `[s${i}]split=2[f${i}][r${i}];`;
+              filterComplex += `[r${i}]reverse[rev${i}];`;
+              concatInputs += `[f${i}][rev${i}]`;
             }
+
+            filterComplex += `${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`;
           }
 
           const timeout = setTimeout(() => {

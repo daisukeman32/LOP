@@ -234,8 +234,7 @@ async function processSingleFile() {
             outputPath: outputPath,
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
-            maxSpeed: parseFloat(maxSpeed.value),
-            loopMode: currentLoopMode
+            maxSpeed: parseFloat(maxSpeed.value)
         });
 
         if (result.success) {
@@ -288,8 +287,7 @@ async function processBatchFiles() {
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
             maxSpeed: parseFloat(maxSpeed.value),
-            outputDir: outputDir,
-            loopMode: currentLoopMode
+            outputDir: outputDir
         });
 
         if (result.success) {
@@ -407,41 +405,6 @@ function updateButtonText() {
     } else {
         generateBtnText.textContent = 'ループ動画を出力';
         outputNoteText.textContent = '※ 連番ファイル名で自動保存 (例: video_loop_001.mp4)';
-    }
-}
-
-// 再生モード切り替え機能
-const modeReverse = document.getElementById('modeReverse');
-const modeForward = document.getElementById('modeForward');
-
-// ローカルストレージから再生モードを読み込み
-const savedMode = localStorage.getItem('loopMode') || 'reverse';
-let currentLoopMode = savedMode;
-applyMode(savedMode);
-
-// 再生モード切り替えイベント
-modeReverse.addEventListener('click', () => {
-    currentLoopMode = 'reverse';
-    applyMode('reverse');
-    localStorage.setItem('loopMode', 'reverse');
-});
-
-modeForward.addEventListener('click', () => {
-    currentLoopMode = 'forward';
-    applyMode('forward');
-    localStorage.setItem('loopMode', 'forward');
-});
-
-function applyMode(mode) {
-    // ボタンのアクティブ状態をリセット
-    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-
-    // モードを適用
-    if (mode === 'forward') {
-        modeForward.classList.add('active');
-    } else {
-        // reverse (デフォルト)
-        modeReverse.classList.add('active');
     }
 }
 
