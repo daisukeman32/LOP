@@ -9,7 +9,10 @@ let selectedFiles = [];
 let isBatchMode = false;
 
 // ループモードの変数
-let isReverseMode = true; // デフォルトはReverse
+let currentLoopMode = 'reverse'; // デフォルトはReverse
+
+// 品質設定の変数
+let currentQuality = 'ultra'; // デフォルトは超高品質
 
 // DOM要素の取得
 const selectFileBtn = document.getElementById('selectFileBtn');
@@ -46,6 +49,12 @@ const batchProgressText = document.getElementById('batchProgressText');
 // モードボタン
 const modeReverse = document.getElementById('modeReverse');
 const modeForward = document.getElementById('modeForward');
+
+// 品質選択ボタン
+const qualityUltra = document.getElementById('qualityUltra');
+const qualityHigh = document.getElementById('qualityHigh');
+const qualityMedium = document.getElementById('qualityMedium');
+const qualityFast = document.getElementById('qualityFast');
 
 // ファイル選択ボタンのクリック処理
 selectFileBtn.addEventListener('click', async () => {
@@ -174,15 +183,17 @@ loopCount.addEventListener('change', updateTotalDuration);
 
 // モードボタンのクリック処理
 modeReverse.addEventListener('click', () => {
-    isReverseMode = true;
+    currentLoopMode = 'reverse';
     modeReverse.classList.add('active');
     modeForward.classList.remove('active');
+    localStorage.setItem('loopMode', 'reverse');
 });
 
 modeForward.addEventListener('click', () => {
-    isReverseMode = false;
+    currentLoopMode = 'forward';
     modeForward.classList.add('active');
     modeReverse.classList.remove('active');
+    localStorage.setItem('loopMode', 'forward');
 });
 
 // ランダム速度チェックボックス変更時
@@ -252,10 +263,11 @@ async function processSingleFile() {
             inputPath: selectedVideoPath,
             loopCount: parseInt(loopCount.value),
             outputPath: outputPath,
-            isReverseMode: isReverseMode,
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
-            maxSpeed: parseFloat(maxSpeed.value)
+            maxSpeed: parseFloat(maxSpeed.value),
+            loopMode: currentLoopMode,
+            quality: currentQuality
         });
 
         if (result.success) {
@@ -305,11 +317,12 @@ async function processBatchFiles() {
         const result = await ipcRenderer.invoke('generate-batch-loop', {
             inputPaths: selectedFiles,
             loopCount: parseInt(loopCount.value),
-            isReverseMode: isReverseMode,
             randomSpeed: randomSpeed.checked,
             minSpeed: parseFloat(minSpeed.value),
             maxSpeed: parseFloat(maxSpeed.value),
-            outputDir: outputDir
+            outputDir: outputDir,
+            loopMode: currentLoopMode,
+            quality: currentQuality
         });
 
         if (result.success) {
@@ -435,6 +448,53 @@ const themeDark = document.getElementById('themeDark');
 const themeDay = document.getElementById('themeDay');
 const themePink = document.getElementById('themePink');
 const lopO = document.getElementById('lopO');
+
+// 品質選択機能
+const savedQuality = localStorage.getItem('outputQuality') || 'ultra';
+currentQuality = savedQuality;
+applyQuality(savedQuality);
+
+// 品質選択イベント
+qualityUltra.addEventListener('click', () => {
+    currentQuality = 'ultra';
+    applyQuality('ultra');
+    localStorage.setItem('outputQuality', 'ultra');
+});
+
+qualityHigh.addEventListener('click', () => {
+    currentQuality = 'high';
+    applyQuality('high');
+    localStorage.setItem('outputQuality', 'high');
+});
+
+qualityMedium.addEventListener('click', () => {
+    currentQuality = 'medium';
+    applyQuality('medium');
+    localStorage.setItem('outputQuality', 'medium');
+});
+
+qualityFast.addEventListener('click', () => {
+    currentQuality = 'fast';
+    applyQuality('fast');
+    localStorage.setItem('outputQuality', 'fast');
+});
+
+function applyQuality(quality) {
+    // ボタンのアクティブ状態をリセット
+    document.querySelectorAll('.quality-btn').forEach(btn => btn.classList.remove('active'));
+
+    // 品質を適用
+    if (quality === 'high') {
+        qualityHigh.classList.add('active');
+    } else if (quality === 'medium') {
+        qualityMedium.classList.add('active');
+    } else if (quality === 'fast') {
+        qualityFast.classList.add('active');
+    } else {
+        // ultra (デフォルト)
+        qualityUltra.classList.add('active');
+    }
+}
 
 // ローカルストレージからテーマを読み込み
 const savedTheme = localStorage.getItem('theme') || 'dark';

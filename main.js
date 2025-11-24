@@ -168,6 +168,47 @@ function generateRandomSpeed(min, max) {
   return (Math.random() * (max - min) + min).toFixed(2);
 }
 
+// 品質設定を取得する関数
+function getQualityOptions(quality = 'high') {
+  const qualityPresets = {
+    ultra: {
+      preset: 'slow',
+      crf: '15',
+      description: '超高品質 - ほぼ無劣化（処理時間: 非常に長い）'
+    },
+    high: {
+      preset: 'slow',
+      crf: '17',
+      description: '高品質 - 元の画質を維持（処理時間: 長い）'
+    },
+    medium: {
+      preset: 'medium',
+      crf: '23',
+      description: '標準品質 - バランス重視（処理時間: 中程度）'
+    },
+    fast: {
+      preset: 'fast',
+      crf: '28',
+      description: '高速処理 - 速度優先（処理時間: 短い）'
+    }
+  };
+
+  const selectedQuality = qualityPresets[quality] || qualityPresets.high;
+
+  return [
+    '-map', '[output]',
+    '-c:v', 'libx264',
+    '-preset', selectedQuality.preset,
+    '-crf', selectedQuality.crf,
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    '-profile:v', 'high',
+    '-level', '4.2',
+    '-bf', '2',
+    '-g', '300'
+  ];
+}
+
 // 連番ファイル名生成関数
 function generateSequentialFilename(basePath, baseName, extension) {
   const fs = require('fs');
@@ -187,10 +228,10 @@ function generateSequentialFilename(basePath, baseName, extension) {
 }
 
 // ループ動画生成
-ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, isReverseMode = true, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0 }) => {
+ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, loopMode = 'reverse', quality = 'ultra' }) => {
   return new Promise((resolve, reject) => {
     console.log('=== ループ生成開始 ===');
-    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed });
+    console.log('入力パラメータ:', { inputPath, loopCount, outputPath, randomSpeed, minSpeed, maxSpeed, loopMode, quality });
     console.log('loopCountの型:', typeof loopCount, 'loopCountの値:', loopCount);
     const fs = require('fs');
     const os = require('os');
@@ -207,7 +248,7 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
     // メモリ効率を改善した実装
     let filterComplex;
 
-    if (isReverseMode) {
+    if (loopMode === 'reverse') {
       // Reverseモード: 1234-321-234-321 (最初と最後のフレームを除去して滑らか)
       let filterParts = [];
       let concatInputs = '';
@@ -255,19 +296,11 @@ ipcMain.handle('generate-loop', async (event, { inputPath, loopCount, outputPath
       resolve({ success: false, error: '処理がタイムアウトしました（10分経過）' });
     }, 600000); // 10分
 
-    // 超高画質設定（4K + 高FPS対応）
+    // 品質設定を適用
+    const qualityOptions = getQualityOptions(quality);
     const command = ffmpeg(inputPath)
       .complexFilter(filterComplex)
-      .outputOptions([
-        '-map', '[output]',
-        '-c:v', 'libx264',
-        '-preset', 'slow',           // 高品質プリセット
-        '-crf', '15',                // 超高画質（15はほぼ完全無劣化）
-        '-pix_fmt', 'yuv420p',       // 互換性の高いピクセルフォーマット
-        '-movflags', '+faststart',   // Web再生用の最適化
-        '-bf', '2',                  // Bフレーム数
-        '-g', '300'                  // GOPサイズ（フレームレートと同じに設定）
-      ])
+      .outputOptions(qualityOptions)
       .output(outputPath)
       .on('start', (commandLine) => {
         console.log('FFmpeg コマンド:', commandLine);
@@ -325,11 +358,13 @@ ipcMain.handle('select-output-path', async (event, inputFileName) => {
 });
 
 // バッチ処理：複数ファイルを一括でループ化
-ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, isReverseMode = true, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null }) => {
+ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, randomSpeed = false, minSpeed = 1.0, maxSpeed = 1.0, outputDir = null, loopMode = 'reverse', quality = 'ultra' }) => {
   try {
     console.log('=== バッチ処理開始 ===');
     console.log('ファイル数:', inputPaths.length);
     console.log('ループ回数:', loopCount);
+    console.log('再生モード:', loopMode);
+    console.log('品質:', quality);
     console.log('保存先:', outputDir);
 
     // 保存先フォルダの確認・作成
@@ -379,7 +414,7 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, isR
           // メモリ効率を改善した実装
           let filterComplex;
 
-          if (isReverseMode) {
+          if (loopMode === 'reverse') {
             // Reverseモード: 1234-321-234-321
             let filterParts = [];
             let concatInputs = '';
@@ -422,18 +457,10 @@ ipcMain.handle('generate-batch-loop', async (event, { inputPaths, loopCount, isR
             resolve({ success: false, error: 'タイムアウト' });
           }, 600000);
 
+          const qualityOptions = getQualityOptions(quality);
           const command = ffmpeg(inputPath)
             .complexFilter(filterComplex)
-            .outputOptions([
-              '-map', '[output]',
-              '-c:v', 'libx264',
-              '-preset', 'slow',
-              '-crf', '15',
-              '-pix_fmt', 'yuv420p',
-              '-movflags', '+faststart',
-              '-bf', '2',
-              '-g', '300'
-            ])
+            .outputOptions(qualityOptions)
             .output(outputPath)
             .on('start', (commandLine) => {
               console.log('FFmpeg開始:', inputFileName);
