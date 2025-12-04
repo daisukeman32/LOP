@@ -10,7 +10,7 @@ exports.default = async function(context) {
   console.log('\n🔧 [afterPack] EXEファイルにアイコンを設定中...\n');
 
   const exePath = path.join(context.appOutDir, 'LOP.exe');
-  const iconPath = path.join(context.packager.projectDir, 'LPOicon.ico');
+  const iconPath = path.join(context.packager.projectDir, 'build', 'icon.ico');
 
   try {
     await rcedit(exePath, { icon: iconPath });

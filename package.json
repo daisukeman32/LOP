@@ -34,8 +34,10 @@
     "productName": "LOP",
     "asar": true,
     "asarUnpack": [
-      "node_modules/@ffmpeg-installer/**/*",
-      "node_modules/@ffprobe-installer/**/*"
+      "**/node_modules/@ffmpeg-installer/**/*",
+      "**/node_modules/@ffprobe-installer/**/*",
+      "**/node_modules/ffmpeg-static/**/*",
+      "**/node_modules/ffprobe-static/**/*"
     ],
     "afterPack": "./afterPack.js",
     "directories": {
@@ -48,13 +50,12 @@
       "renderer.js",
       "styles.css",
       "package.json",
-      "LPOicon.ico",
       "LPOicon.png",
       "node_modules/**/*"
     ],
     "mac": {
       "category": "public.app-category.video",
-      "icon": "LPOicon.png",
+      "icon": "build/icon.icns",
       "artifactName": "LOP-${version}-Mac-${arch}.${ext}",
       "target": [
         {
@@ -74,7 +75,7 @@
       ]
     },
     "win": {
-      "icon": "LPOicon.ico",
+      "icon": "build/icon.ico",
       "artifactName": "LOP-${version}-Windows-${arch}.${ext}",
       "signAndEditExecutable": false,
       "target": [
@@ -97,7 +98,7 @@
       "perMachine": false
     },
     "linux": {
-      "icon": "LPOicon.png",
+      "icon": "build/icon.ico",
       "artifactName": "LOP-${version}-Linux-${arch}.${ext}",
       "target": [
         "AppImage",

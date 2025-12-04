@@ -1,73 +1,141 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
-const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
-
-// FFmpegバイナリのパス設定
 const fs = require('fs');
 
+// FFmpegバイナリのパス設定
+
+// 再帰的にファイルを検索する関数
+function findFileRecursive(dir, filename, maxDepth = 5, currentDepth = 0) {
+  if (currentDepth > maxDepth) return null;
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isFile() && entry.name === filename) {
+        return fullPath;
+      }
+
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        const found = findFileRecursive(fullPath, filename, maxDepth, currentDepth + 1);
+        if (found) return found;
+      }
+    }
+  } catch (error) {
+    // ディレクトリ読み取りエラーは無視
+  }
+
+  return null;
+}
+
 function setupFFmpegPaths() {
-  // アプリがパッケージングされているかどうかで判定
+  const isWindows = process.platform === 'win32';
+  const ffmpegExe = isWindows ? 'ffmpeg.exe' : 'ffmpeg';
+  const ffprobeExe = isWindows ? 'ffprobe.exe' : 'ffprobe';
+
+  console.log('=== FFmpegパス設定開始 ===');
+  console.log('プラットフォーム:', process.platform);
+  console.log('アーキテクチャ:', process.arch);
+  console.log('app.isPackaged:', app.isPackaged);
+
+  let ffmpegPath = null;
+  let ffprobePath = null;
+
   if (!app.isPackaged) {
-    // 開発時：@ffmpeg-installerからバイナリを使用
-    console.log('開発モード: @ffmpeg-installerを使用');
+    // 開発時：@ffmpeg-installerから直接パスを取得
+    console.log('開発モード');
     try {
-      ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-      ffmpeg.setFfprobePath(ffprobeInstaller.path);
-      console.log('FFmpeg開発パス設定完了:', ffmpegInstaller.path);
+      const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+      const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
+      ffmpegPath = ffmpegInstaller.path;
+      ffprobePath = ffprobeInstaller.path;
+      console.log('FFmpeg開発パス:', ffmpegPath);
+      console.log('FFprobe開発パス:', ffprobePath);
     } catch (error) {
-      console.error('FFmpeg開発パス設定エラー:', error);
+      console.error('開発モードでのパス取得エラー:', error);
     }
   } else {
-    // 本番時：アプリリソース内のバイナリを使用
-    console.log('本番モード: 内蔵FFmpegを使用');
-    
-    // アプリにバンドルされたFFmpegバイナリを使用
+    // 本番時：app.asar.unpacked内を検索
+    console.log('本番モード');
     const resourcesPath = process.resourcesPath;
-    const ffmpegPath = path.join(resourcesPath, 'bin', 'ffmpeg');
-    const ffprobePath = path.join(resourcesPath, 'bin', 'ffprobe');
-    
-    console.log('アーキテクチャ:', process.arch);
     console.log('リソースパス:', resourcesPath);
-    console.log('FFmpegパス:', ffmpegPath);
-    
-    if (fs.existsSync(ffmpegPath)) {
-      // バイナリを実行可能にする
-      try {
-        fs.chmodSync(ffmpegPath, '755');
-        ffmpeg.setFfmpegPath(ffmpegPath);
-        console.log('FFmpeg内蔵バイナリを使用:', ffmpegPath);
-      } catch (error) {
-        console.error('FFmpegバイナリの権限設定エラー:', error);
-      }
+
+    // app.asar.unpackedディレクトリ
+    const unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
+    console.log('unpacked パス:', unpackedPath);
+
+    // unpackedディレクトリが存在するか確認
+    if (fs.existsSync(unpackedPath)) {
+      console.log('app.asar.unpacked ディレクトリ存在確認: OK');
+
+      // FFmpegを再帰検索
+      ffmpegPath = findFileRecursive(unpackedPath, ffmpegExe);
+      ffprobePath = findFileRecursive(unpackedPath, ffprobeExe);
+
+      console.log('検索結果 - FFmpeg:', ffmpegPath);
+      console.log('検索結果 - FFprobe:', ffprobePath);
     } else {
-      console.warn('FFmpeg内蔵バイナリが見つかりません。フォールバックを試します。');
-      try {
-        ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-        console.log('フォールバック: @ffmpeg-installer使用');
-      } catch (error) {
-        console.error('FFmpegの設定に失敗しました:', error);
-      }
+      console.warn('app.asar.unpacked ディレクトリが見つかりません');
+
+      // フォールバック: resourcesPath直下を検索
+      ffmpegPath = findFileRecursive(resourcesPath, ffmpegExe, 3);
+      ffprobePath = findFileRecursive(resourcesPath, ffprobeExe, 3);
     }
-    
-    if (fs.existsSync(ffprobePath)) {
+
+    // さらにフォールバック: @ffmpeg-installerを試す
+    if (!ffmpegPath || !ffprobePath) {
+      console.log('再帰検索で見つからなかったため、@ffmpeg-installerを試行');
       try {
-        fs.chmodSync(ffprobePath, '755');
-        ffmpeg.setFfprobePath(ffprobePath);
-        console.log('FFprobe内蔵バイナリを使用:', ffprobePath);
+        const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+        const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
+
+        if (!ffmpegPath && fs.existsSync(ffmpegInstaller.path)) {
+          ffmpegPath = ffmpegInstaller.path;
+          console.log('フォールバック FFmpeg:', ffmpegPath);
+        }
+        if (!ffprobePath && fs.existsSync(ffprobeInstaller.path)) {
+          ffprobePath = ffprobeInstaller.path;
+          console.log('フォールバック FFprobe:', ffprobePath);
+        }
       } catch (error) {
-        console.error('FFprobeバイナリの権限設定エラー:', error);
-      }
-    } else {
-      try {
-        ffmpeg.setFfprobePath(ffprobeInstaller.path);
-        console.log('フォールバック: @ffprobe-installer使用');
-      } catch (error) {
-        console.error('FFprobeの設定に失敗しました:', error);
+        console.error('@ffmpeg-installer フォールバックエラー:', error.message);
       }
     }
   }
+
+  // パスを設定
+  if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+    try {
+      if (!isWindows) {
+        fs.chmodSync(ffmpegPath, '755');
+      }
+      ffmpeg.setFfmpegPath(ffmpegPath);
+      console.log('FFmpeg設定完了:', ffmpegPath);
+    } catch (error) {
+      console.error('FFmpegパス設定エラー:', error);
+    }
+  } else {
+    console.error('FFmpegバイナリが見つかりません！');
+  }
+
+  if (ffprobePath && fs.existsSync(ffprobePath)) {
+    try {
+      if (!isWindows) {
+        fs.chmodSync(ffprobePath, '755');
+      }
+      ffmpeg.setFfprobePath(ffprobePath);
+      console.log('FFprobe設定完了:', ffprobePath);
+    } catch (error) {
+      console.error('FFprobeパス設定エラー:', error);
+    }
+  } else {
+    console.error('FFprobeバイナリが見つかりません！');
+  }
+
+  console.log('=== FFmpegパス設定完了 ===');
 }
 
 // FFmpegパス初期化
