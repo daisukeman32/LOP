@@ -78,8 +78,93 @@ const elements = {
     mergeQualityFast: document.getElementById('mergeQualityFast'),
     mergeTotalDuration: document.getElementById('mergeTotalDuration'),
     mergeOutputSection: document.getElementById('mergeOutputSection'),
-    mergeGenerateBtn: document.getElementById('mergeGenerateBtn')
+    mergeGenerateBtn: document.getElementById('mergeGenerateBtn'),
+    mergeNote: document.getElementById('mergeNote')
 };
+
+// マージ注釈を更新
+function updateMergeNote() {
+    if (!elements.mergeNote) return;
+
+    const commonNote = '（同じ解像度・フレームレートの動画のみ）';
+
+    if (frameCutMode === 0) {
+        elements.mergeNote.textContent = `※ OFF: そのまま結合${commonNote}`;
+    } else if (frameCutMode === 1) {
+        elements.mergeNote.textContent = `※ 1F: 繋ぎ目の重複1枚削除${commonNote}`;
+    } else if (frameCutMode === 2) {
+        elements.mergeNote.textContent = `※ 2F: 繋ぎ目の重複2枚削除${commonNote}`;
+    }
+}
+
+// 現在の処理モード（進捗計算用）
+let currentProcessMode = 'loop'; // 'loop' or 'merge'
+
+// プログレスラベルのアニメーション
+let progressLabelInterval = null;
+let dotCount = 0;
+
+// 進捗バーの滑らかなアニメーション用
+let progressAnimationInterval = null;
+let currentDisplayProgress = 0;
+let targetProgress = 0;
+
+function startProgressAnimation(start, end, durationMs) {
+    stopProgressAnimation();
+    currentDisplayProgress = start;
+    targetProgress = end;
+    const steps = Math.ceil(durationMs / 50); // 50msごとに更新
+    const increment = (end - start) / steps;
+    let stepCount = 0;
+
+    progressAnimationInterval = setInterval(() => {
+        stepCount++;
+        currentDisplayProgress = Math.min(start + increment * stepCount, end);
+        updateProgressDisplay(Math.round(currentDisplayProgress));
+        if (stepCount >= steps) {
+            stopProgressAnimation();
+        }
+    }, 50);
+}
+
+function stopProgressAnimation() {
+    if (progressAnimationInterval) {
+        clearInterval(progressAnimationInterval);
+        progressAnimationInterval = null;
+    }
+}
+
+// 表示のみを更新（アニメーション用）
+function updateProgressDisplay(percent) {
+    percent = Math.max(0, Math.min(100, Math.round(percent)));
+    elements.progressFill.style.width = `${percent}%`;
+    elements.progressText.textContent = `${percent}%`;
+}
+
+function startProgressLabelAnimation(baseText) {
+    stopProgressLabelAnimation();
+    dotCount = 0;
+
+    // 固定テキストとアニメーションするドット用spanを分離
+    // ドット部分は固定幅でガタつき防止
+    elements.progressLabel.innerHTML = `${baseText}<span id="animDots" style="display:inline-block;width:1.5em;text-align:left;">.</span>`;
+    const dotsSpan = document.getElementById('animDots');
+
+    progressLabelInterval = setInterval(() => {
+        dotCount = (dotCount + 1) % 4;
+        const dots = '.'.repeat(dotCount || 1);
+        if (dotsSpan) {
+            dotsSpan.textContent = dots;
+        }
+    }, 400);
+}
+
+function stopProgressLabelAnimation() {
+    if (progressLabelInterval) {
+        clearInterval(progressLabelInterval);
+        progressLabelInterval = null;
+    }
+}
 
 // FFmpeg初期化
 async function initFFmpeg() {
@@ -88,7 +173,14 @@ async function initFFmpeg() {
     ffmpeg = createFFmpeg({
         log: true,
         progress: ({ ratio }) => {
-            const percent = Math.round(ratio * 100);
+            // マージモードの場合、進捗を20-70%にスケール（読込20%、FFmpeg50%、後処理30%）
+            // ループモードの場合、進捗を0-70%にスケール
+            let percent;
+            if (currentProcessMode === 'merge') {
+                percent = Math.round(20 + ratio * 50); // 20% ~ 70%
+            } else {
+                percent = Math.round(ratio * 70); // 0% ~ 70%
+            }
             updateProgress(percent);
         }
     });
@@ -381,14 +473,26 @@ async function generateLoopVideo() {
             );
         }
 
-        elements.progressLabel.textContent = '出力ファイルを準備中...';
-        updateProgress(100);
+        startProgressLabelAnimation('出力ファイルを準備中');
+        // 70%から85%まで滑らかにアニメーション
+        startProgressAnimation(70, 85, 2000);
 
         const outputData = ffmpeg.FS('readFile', 'output.mp4');
+
+        stopProgressAnimation();
+        updateProgress(90);
+
         outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
 
         const resultUrl = URL.createObjectURL(outputBlob);
         elements.resultVideo.src = resultUrl;
+
+        stopProgressLabelAnimation();
+        // 90%から100%まで滑らかにアニメーション
+        startProgressAnimation(90, 100, 500);
+
+        // 少し待ってから完了表示（アニメーションが見えるように）
+        await new Promise(resolve => setTimeout(resolve, 600));
 
         elements.progress.style.display = 'none';
         elements.resultSection.style.display = 'block';
@@ -398,6 +502,8 @@ async function generateLoopVideo() {
 
     } catch (error) {
         console.error('Generation error:', error);
+        stopProgressLabelAnimation();
+        stopProgressAnimation();
 
         // OOMエラーの判定
         const errorMsg = error.message || error.toString();
@@ -473,28 +579,35 @@ async function handleMergeFiles(files) {
 
     // 各動画のメタデータを取得
     for (const file of videoFiles) {
-        const duration = await getVideoDuration(file);
+        const metadata = await getVideoMetadata(file);
         mergeVideos.push({
             file: file,
             name: file.name,
-            duration: duration
+            duration: metadata.duration,
+            width: metadata.width,
+            height: metadata.height
         });
     }
 
     updateMergeVideoList();
 }
 
-// 動画の長さを取得
-function getVideoDuration(file) {
+// 動画のメタデータを取得（長さ、解像度）
+function getVideoMetadata(file) {
     return new Promise((resolve) => {
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
+            const metadata = {
+                duration: video.duration,
+                width: video.videoWidth,
+                height: video.videoHeight
+            };
             URL.revokeObjectURL(video.src);
-            resolve(video.duration);
+            resolve(metadata);
         };
         video.onerror = () => {
-            resolve(0);
+            resolve({ duration: 0, width: 0, height: 0 });
         };
         video.src = URL.createObjectURL(file);
     });
@@ -626,6 +739,32 @@ async function generateMergeVideoMainThread() {
         return;
     }
 
+    // 解像度チェック（全モード共通）
+    // コピーモード（OFF）でも異なるスペックの動画は結合できない
+    if (mergeVideos.length > 1) {
+        const firstVideo = mergeVideos[0];
+        const differentVideos = mergeVideos.filter(v =>
+            v.width !== firstVideo.width || v.height !== firstVideo.height
+        );
+
+        if (differentVideos.length > 0) {
+            const videoInfo = mergeVideos.map(v =>
+                `  ${v.name}: ${v.width}x${v.height}`
+            ).join('\n');
+
+            alert(
+                `⚠️ 異なる解像度の動画は結合できません。\n\n` +
+                `検出された解像度:\n${videoInfo}\n\n` +
+                `すべての動画が同じ解像度・フレームレートである必要があります。\n` +
+                `同じソースから生成された動画を使用してください。`
+            );
+            return;
+        }
+    }
+
+    // 進捗計算用にモードを設定
+    currentProcessMode = 'merge';
+
     // ファイルサイズ警告
     const maxFileSize = Math.max(...mergeVideos.map(v => v.file.size));
     if (maxFileSize > 30 * 1024 * 1024) {
@@ -647,11 +786,15 @@ async function generateMergeVideoMainThread() {
     updateProgress(0);
 
     try {
-        // ファイル書き込み
+        // ファイル書き込み（進捗0-20%）
         for (let i = 0; i < mergeVideos.length; i++) {
             const fileSizeMB = (mergeVideos[i].file.size / (1024 * 1024)).toFixed(1);
             elements.progressLabel.textContent = `動画 ${i + 1}/${mergeVideos.length} を読み込み中... (${fileSizeMB}MB)`;
             console.log(`Writing file input${i}.mp4 (${fileSizeMB}MB)`);
+
+            // ファイル読み込み進捗（0-20%）
+            const loadProgress = Math.round((i / mergeVideos.length) * 20);
+            updateProgress(loadProgress);
 
             await new Promise(resolve => setTimeout(resolve, 100));
             const fileData = await window.ffmpegFetchFile(mergeVideos[i].file);
@@ -662,7 +805,8 @@ async function generateMergeVideoMainThread() {
         }
 
         elements.progressFill.classList.remove('pulsing');
-        elements.progressLabel.textContent = '動画を結合中...';
+        updateProgress(20);
+        startProgressLabelAnimation('動画を結合中');
 
         // 品質設定
         const qualitySettings = {
@@ -682,31 +826,102 @@ async function generateMergeVideoMainThread() {
         ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
         console.log('File list created:', fileListContent);
 
-        console.log('Running FFmpeg concat...');
+        console.log('Running FFmpeg...');
+        console.log('Frame cut mode:', frameCutMode);
 
-        // concat demuxerを使用（コピーモードで高速処理）
-        await ffmpeg.run(
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', 'filelist.txt',
-            '-c', 'copy',
-            '-movflags', '+faststart',
-            'output.mp4'
-        );
+        if (frameCutMode === 0) {
+            // フレームカットなし → コピーモード（高速）
+            await ffmpeg.run(
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', 'filelist.txt',
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                'output.mp4'
+            );
+        } else {
+            // フレームカットあり → filter_complex使用（再エンコード）
+            // 同じ解像度の動画のみ受け付けるため、スケール不要
+            let filterParts = [];
+            let concatInputs = '';
+
+            for (let i = 0; i < mergeVideos.length; i++) {
+                const isFirstVideo = (i === 0);
+
+                if (frameCutMode === 1) {
+                    // 1フレームカット: 最初の動画以外の先頭フレームをカット
+                    if (isFirstVideo) {
+                        filterParts.push(`[${i}:v]setpts=PTS-STARTPTS[v${i}]`);
+                    } else {
+                        filterParts.push(`[${i}:v]trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
+                    }
+                } else if (frameCutMode === 2) {
+                    // 2フレームカット: 最初の動画以外の先頭2フレームをカット
+                    if (isFirstVideo) {
+                        filterParts.push(`[${i}:v]setpts=PTS-STARTPTS[v${i}]`);
+                    } else {
+                        filterParts.push(`[${i}:v]trim=start_frame=2,setpts=PTS-STARTPTS[v${i}]`);
+                    }
+                }
+                concatInputs += `[v${i}]`;
+            }
+
+            // concat
+            filterParts.push(`${concatInputs}concat=n=${mergeVideos.length}:v=1:a=0,format=yuv420p[output]`);
+            const filterComplex = filterParts.join(';');
+            console.log('Filter complex:', filterComplex);
+
+            // 入力引数を構築
+            const inputArgs = [];
+            for (let i = 0; i < mergeVideos.length; i++) {
+                inputArgs.push('-i', `input${i}.mp4`);
+            }
+
+            await ffmpeg.run(
+                ...inputArgs,
+                '-filter_complex', filterComplex,
+                '-map', '[output]',
+                '-c:v', 'libx264',
+                '-preset', preset,
+                '-crf', crf,
+                '-vsync', 'vfr',
+                '-threads', '1',
+                '-movflags', '+faststart',
+                'output.mp4'
+            );
+        }
 
         console.log('FFmpeg completed');
 
-        elements.progressLabel.textContent = '出力ファイルを準備中...';
-        updateProgress(100);
+        startProgressLabelAnimation('出力ファイルを準備中');
+        // FFmpeg完了後、70%から85%まで滑らかにアニメーション（3秒間）
+        startProgressAnimation(70, 85, 3000);
 
-        const outputData = ffmpeg.FS('readFile', 'output.mp4');
+        // 出力ファイルの存在とサイズをチェック
+        let outputData;
+        try {
+            outputData = ffmpeg.FS('readFile', 'output.mp4');
+            if (!outputData || outputData.length === 0) {
+                throw new Error('出力ファイルが空です。動画の結合に失敗しました。');
+            }
+            console.log('Output file size:', outputData.length, 'bytes');
+        } catch (readError) {
+            console.error('Failed to read output file:', readError);
+            throw new Error('出力ファイルの読み込みに失敗しました。FFmpegでエラーが発生した可能性があります。');
+        }
+
+        // ファイル読み込み完了、アニメーション停止
+        stopProgressAnimation();
+        updateProgress(90);
+
         outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
 
         const resultUrl = URL.createObjectURL(outputBlob);
         elements.resultVideo.src = resultUrl;
 
-        elements.progress.style.display = 'none';
-        elements.resultSection.style.display = 'block';
+        stopProgressLabelAnimation();
+        // 90%から100%まで滑らかにアニメーション
+        startProgressAnimation(90, 100, 500);
 
         // クリーンアップ
         for (let i = 0; i < mergeVideos.length; i++) {
@@ -715,9 +930,21 @@ async function generateMergeVideoMainThread() {
         try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
         try { ffmpeg.FS('unlink', 'output.mp4'); } catch(e) {}
 
+        // モードをリセット
+        currentProcessMode = 'loop';
+
+        // 少し待ってから完了表示（アニメーションが見えるように）
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        elements.progress.style.display = 'none';
+        elements.resultSection.style.display = 'block';
+
     } catch (error) {
         console.error('Merge error:', error);
         elements.progressFill.classList.remove('pulsing');
+        stopProgressLabelAnimation();
+        stopProgressAnimation();
+        currentProcessMode = 'loop'; // モードをリセット
 
         const errorMsg = error.message || error.toString();
         if (errorMsg.includes('OOM') || errorMsg.includes('memory') || errorMsg.includes('abort')) {
@@ -913,6 +1140,7 @@ function setupEventListeners() {
         elements.frameCut0.classList.add('active');
         elements.frameCut1.classList.remove('active');
         elements.frameCut2.classList.remove('active');
+        updateMergeNote();
     });
 
     elements.frameCut1.addEventListener('click', () => {
@@ -920,6 +1148,7 @@ function setupEventListeners() {
         elements.frameCut1.classList.add('active');
         elements.frameCut0.classList.remove('active');
         elements.frameCut2.classList.remove('active');
+        updateMergeNote();
     });
 
     elements.frameCut2.addEventListener('click', () => {
@@ -927,7 +1156,11 @@ function setupEventListeners() {
         elements.frameCut2.classList.add('active');
         elements.frameCut0.classList.remove('active');
         elements.frameCut1.classList.remove('active');
+        updateMergeNote();
     });
+
+    // 初期表示
+    updateMergeNote();
 
     // Merge品質
     elements.mergeQualityUltra.addEventListener('click', () => {
