@@ -107,23 +107,22 @@ body.theme-pink {
 
 .header {
     text-align: center;
-    margin-bottom: 32px;
+    margin-bottom: 24px;
     position: relative;
 }
 
 .theme-switcher {
     position: absolute;
-    top: -10px;
-    right: -10px;
+    top: -30px;
+    right: 0;
     display: flex;
     background: var(--bg-input);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 4px;
     padding: 2px;
     gap: 1px;
-    opacity: 0.5;
+    opacity: 0.4;
     transition: opacity 0.2s ease;
-    z-index: 10;
 }
 
 .theme-switcher:hover {
@@ -153,23 +152,19 @@ body.theme-pink {
 }
 
 h1 {
-    font-size: 36px;
+    font-size: 20px;
     font-weight: 300;
-    letter-spacing: 8px;
+    letter-spacing: 6px;
     color: var(--text-title);
-    position: relative;
-    transition: color 0.3s ease;
+    display: inline;
 }
 
 .version {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 400;
     color: var(--text-secondary);
-    position: absolute;
-    bottom: 0;
-    margin-left: 8px;
     letter-spacing: 1px;
-    transition: color 0.3s ease;
+    margin-left: 6px;
 }
 
 .main {
@@ -655,6 +650,31 @@ h1 {
 .merge-video-item .remove-btn:hover {
     opacity: 1;
     color: #dc3545;
+}
+
+.merge-video-item .drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    font-size: 14px;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+.merge-video-item:hover .drag-handle {
+    opacity: 1;
+}
+
+.merge-video-item.dragging {
+    opacity: 0.5;
+    background: var(--accent-color);
+}
+
+.merge-video-item.drag-over-top {
+    border-top: 2px solid var(--accent-color);
+}
+
+.merge-video-item.drag-over-bottom {
+    border-bottom: 2px solid var(--accent-color);
 }
 
 /* レスポンシブ */

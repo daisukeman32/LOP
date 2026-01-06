@@ -18,12 +18,12 @@
 
     <div class="app">
         <header class="header">
+            <h1>WEBLO<span id="lopO">OOO</span>P<span class="version">v1.7</span></h1>
             <div class="theme-switcher">
                 <button id="themeDark" class="theme-btn active">Night</button>
                 <button id="themeDay" class="theme-btn">Day</button>
                 <button id="themePink" class="theme-btn">Wow</button>
             </div>
-            <h1>WEBL<span id="lopO">O</span>P<span class="version">v1.6</span></h1>
         </header>
 
         <!-- モード切り替えタブ -->
@@ -135,10 +135,11 @@
                 <!-- Mergeコントロール -->
                 <div id="mergeControlsSection" class="controls" style="display: none;">
                     <div class="control-group">
-                        <label class="control-label">フレーム重複除去</label>
-                        <div class="loop-mode-switcher">
-                            <button id="dedupeOn" class="mode-btn active">ON</button>
-                            <button id="dedupeOff" class="mode-btn">OFF</button>
+                        <label class="control-label">フレームカット</label>
+                        <div class="quality-switcher">
+                            <button id="frameCut0" class="quality-btn">OFF</button>
+                            <button id="frameCut1" class="quality-btn active">1F</button>
+                            <button id="frameCut2" class="quality-btn">2F</button>
                         </div>
                     </div>
 
@@ -165,7 +166,7 @@
                         <span>動画を結合</span>
                     </button>
                     <div class="output-note">
-                        <span>※ 2本目以降の最初のフレームは自動カットされます</span>
+                        <span>※ 最後の動画以外の最終フレームが自動カットされます</span>
                     </div>
                 </div>
             </div>
