@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WEBLOP</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- FFmpeg Loading Overlay -->
+    <div id="ffmpegLoading" class="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>FFmpeg.wasm を読み込み中...</p>
+            <p class="loading-note">初回は約25MB のダウンロードが必要です</p>
+        </div>
+    </div>
+
+    <div class="app">
+        <header class="header">
+            <div class="theme-switcher">
+                <button id="themeDark" class="theme-btn active">Night</button>
+                <button id="themeDay" class="theme-btn">Day</button>
+                <button id="themePink" class="theme-btn">Wow</button>
+            </div>
+            <h1>WEBL<span id="lopO">O</span>P<span class="version">v1.6</span></h1>
+        </header>
+
+        <!-- モード切り替えタブ -->
+        <div class="mode-tabs">
+            <button id="tabLoop" class="mode-tab active">Loop</button>
+            <button id="tabMerge" class="mode-tab">Merge</button>
+        </div>
+
+        <div class="main">
+            <!-- ===== LOOP MODE ===== -->
+            <div id="loopMode">
+            <!-- ファイル選択セクション -->
+            <div id="inputSection" class="input-section">
+                <div id="dropZone" class="drop-zone">
+                    <span class="icon">📁</span>
+                    <span>動画をドラッグ&ドロップ</span>
+                    <span class="drop-hint">または クリックして選択</span>
+                </div>
+                <input type="file" id="fileInput" accept="video/*" hidden>
+            </div>
+
+            <!-- 動画情報 -->
+            <div id="videoInfo" class="video-info" style="display: none;">
+                <div class="info-row">
+                    <span class="label">ファイル:</span>
+                    <span id="fileName" class="value"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">長さ:</span>
+                    <span id="videoDuration" class="value"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">サイズ:</span>
+                    <span id="fileSize" class="value"></span>
+                </div>
+                <div id="warningMessage" class="warning" style="display: none;"></div>
+                <div class="preview-container">
+                    <video id="previewVideo" class="preview" controls></video>
+                </div>
+                <button id="changeFileBtn" class="btn change-btn">別のファイルを選択</button>
+            </div>
+
+            <!-- コントロール -->
+            <div id="controlsSection" class="controls" style="display: none;">
+                <div class="control-group">
+                    <label class="control-label">ループ回数</label>
+                    <input type="number" id="loopCount" value="3" min="1" max="20" class="loop-input">
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">再生モード</label>
+                    <div class="loop-mode-switcher">
+                        <button id="modeReverse" class="mode-btn active">Reverse</button>
+                        <button id="modeForward" class="mode-btn">Forward</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">出力品質</label>
+                    <div class="quality-switcher">
+                        <button id="qualityUltra" class="quality-btn" title="最高品質（処理時間: 最長）">Ultra</button>
+                        <button id="qualityHigh" class="quality-btn active" title="高品質（処理時間: 長い）">High</button>
+                        <button id="qualityMedium" class="quality-btn" title="標準品質（処理時間: 中程度）">Medium</button>
+                        <button id="qualityFast" class="quality-btn" title="高速処理（処理時間: 短い）">Fast</button>
+                    </div>
+                </div>
+
+                <div id="totalInfo" class="total-info">
+                    <span class="total-label">推定出力時間:</span>
+                    <span id="totalDuration" class="total-value">-</span>
+                </div>
+            </div>
+
+            <!-- 出力ボタン -->
+            <div id="outputSection" class="output-section" style="display: none;">
+                <button id="generateBtn" class="btn output-btn">
+                    <span class="icon">🎬</span>
+                    <span>ループ動画を生成</span>
+                </button>
+                <div class="output-note">
+                    <span>※ 生成後にダウンロードできます</span>
+                </div>
+            </div>
+            </div>
+            <!-- ===== END LOOP MODE ===== -->
+
+            <!-- ===== MERGE MODE ===== -->
+            <div id="mergeMode" style="display: none;">
+                <!-- 複数ファイル選択 -->
+                <div id="mergeInputSection" class="input-section">
+                    <div id="mergeDropZone" class="drop-zone">
+                        <span class="icon">📁</span>
+                        <span>複数の動画をドラッグ&ドロップ</span>
+                        <span class="drop-hint">または クリックして選択</span>
+                    </div>
+                    <input type="file" id="mergeFileInput" accept="video/*" multiple hidden>
+                </div>
+
+                <!-- 動画リスト -->
+                <div id="mergeVideoList" class="merge-video-list" style="display: none;">
+                    <div class="list-header">
+                        <span class="list-title">動画リスト</span>
+                        <span class="list-count">(<span id="mergeVideoCount">0</span>本)</span>
+                    </div>
+                    <div id="mergeVideos" class="merge-videos"></div>
+                    <button id="addMoreBtn" class="btn change-btn">+ 動画を追加</button>
+                </div>
+
+                <!-- Mergeコントロール -->
+                <div id="mergeControlsSection" class="controls" style="display: none;">
+                    <div class="control-group">
+                        <label class="control-label">フレーム重複除去</label>
+                        <div class="loop-mode-switcher">
+                            <button id="dedupeOn" class="mode-btn active">ON</button>
+                            <button id="dedupeOff" class="mode-btn">OFF</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label class="control-label">出力品質</label>
+                        <div class="quality-switcher">
+                            <button id="mergeQualityUltra" class="quality-btn" title="最高品質">Ultra</button>
+                            <button id="mergeQualityHigh" class="quality-btn active" title="高品質">High</button>
+                            <button id="mergeQualityMedium" class="quality-btn" title="標準品質">Medium</button>
+                            <button id="mergeQualityFast" class="quality-btn" title="高速処理">Fast</button>
+                        </div>
+                    </div>
+
+                    <div id="mergeTotalInfo" class="total-info">
+                        <span class="total-label">推定出力時間:</span>
+                        <span id="mergeTotalDuration" class="total-value">-</span>
+                    </div>
+                </div>
+
+                <!-- Merge出力ボタン -->
+                <div id="mergeOutputSection" class="output-section" style="display: none;">
+                    <button id="mergeGenerateBtn" class="btn output-btn">
+                        <span class="icon">🎬</span>
+                        <span>動画を結合</span>
+                    </button>
+                    <div class="output-note">
+                        <span>※ 2本目以降の最初のフレームは自動カットされます</span>
+                    </div>
+                </div>
+            </div>
+            <!-- ===== END MERGE MODE ===== -->
+
+            <!-- 進捗表示 -->
+            <div id="progress" class="progress" style="display: none;">
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div class="progress-info">
+                    <span id="progressText">0%</span>
+                    <span id="progressLabel" class="progress-label">処理中...</span>
+                </div>
+            </div>
+
+            <!-- 完了メッセージ -->
+            <div id="resultSection" class="result-section" style="display: none;">
+                <div class="success">完了しました！</div>
+                <div class="result-preview">
+                    <video id="resultVideo" class="preview" controls></video>
+                </div>
+                <div class="result-actions">
+                    <button id="downloadBtn" class="btn output-btn">
+                        <span class="icon">💾</span>
+                        <span>ダウンロード</span>
+                    </button>
+                    <button id="newVideoBtn" class="btn select-btn">
+                        <span class="icon">🔄</span>
+                        <span>新しい動画を作成</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <span>Powered by FFmpeg.wasm</span>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

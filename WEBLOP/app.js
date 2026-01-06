@@ -49,6 +49,7 @@ const elements = {
     modeReverse: document.getElementById('modeReverse'),
     modeForward: document.getElementById('modeForward'),
     // 品質
+    qualityUltra: document.getElementById('qualityUltra'),
     qualityHigh: document.getElementById('qualityHigh'),
     qualityMedium: document.getElementById('qualityMedium'),
     qualityFast: document.getElementById('qualityFast'),
@@ -68,6 +69,7 @@ const elements = {
     mergeControlsSection: document.getElementById('mergeControlsSection'),
     dedupeOn: document.getElementById('dedupeOn'),
     dedupeOff: document.getElementById('dedupeOff'),
+    mergeQualityUltra: document.getElementById('mergeQualityUltra'),
     mergeQualityHigh: document.getElementById('mergeQualityHigh'),
     mergeQualityMedium: document.getElementById('mergeQualityMedium'),
     mergeQualityFast: document.getElementById('mergeQualityFast'),
@@ -226,6 +228,7 @@ async function generateLoopVideo() {
         elements.progressLabel.textContent = 'ループ動画を生成中...';
 
         const qualitySettings = {
+            ultra: { crf: '18', preset: 'slow' },
             high: { crf: '23', preset: 'medium' },
             medium: { crf: '28', preset: 'fast' },
             fast: { crf: '32', preset: 'ultrafast' }
@@ -476,6 +479,7 @@ async function generateMergeVideo() {
         elements.progressLabel.textContent = '動画を結合中...';
 
         const qualitySettings = {
+            ultra: { crf: '18', preset: 'slow' },
             high: { crf: '23', preset: 'medium' },
             medium: { crf: '28', preset: 'fast' },
             fast: { crf: '32', preset: 'ultrafast' }
@@ -643,9 +647,18 @@ function setupEventListeners() {
     });
 
     // 品質
+    elements.qualityUltra.addEventListener('click', () => {
+        quality = 'ultra';
+        elements.qualityUltra.classList.add('active');
+        elements.qualityHigh.classList.remove('active');
+        elements.qualityMedium.classList.remove('active');
+        elements.qualityFast.classList.remove('active');
+    });
+
     elements.qualityHigh.addEventListener('click', () => {
         quality = 'high';
         elements.qualityHigh.classList.add('active');
+        elements.qualityUltra.classList.remove('active');
         elements.qualityMedium.classList.remove('active');
         elements.qualityFast.classList.remove('active');
     });
@@ -653,6 +666,7 @@ function setupEventListeners() {
     elements.qualityMedium.addEventListener('click', () => {
         quality = 'medium';
         elements.qualityMedium.classList.add('active');
+        elements.qualityUltra.classList.remove('active');
         elements.qualityHigh.classList.remove('active');
         elements.qualityFast.classList.remove('active');
     });
@@ -660,6 +674,7 @@ function setupEventListeners() {
     elements.qualityFast.addEventListener('click', () => {
         quality = 'fast';
         elements.qualityFast.classList.add('active');
+        elements.qualityUltra.classList.remove('active');
         elements.qualityHigh.classList.remove('active');
         elements.qualityMedium.classList.remove('active');
     });
@@ -735,9 +750,18 @@ function setupEventListeners() {
     });
 
     // Merge品質
+    elements.mergeQualityUltra.addEventListener('click', () => {
+        mergeQuality = 'ultra';
+        elements.mergeQualityUltra.classList.add('active');
+        elements.mergeQualityHigh.classList.remove('active');
+        elements.mergeQualityMedium.classList.remove('active');
+        elements.mergeQualityFast.classList.remove('active');
+    });
+
     elements.mergeQualityHigh.addEventListener('click', () => {
         mergeQuality = 'high';
         elements.mergeQualityHigh.classList.add('active');
+        elements.mergeQualityUltra.classList.remove('active');
         elements.mergeQualityMedium.classList.remove('active');
         elements.mergeQualityFast.classList.remove('active');
     });
@@ -745,6 +769,7 @@ function setupEventListeners() {
     elements.mergeQualityMedium.addEventListener('click', () => {
         mergeQuality = 'medium';
         elements.mergeQualityMedium.classList.add('active');
+        elements.mergeQualityUltra.classList.remove('active');
         elements.mergeQualityHigh.classList.remove('active');
         elements.mergeQualityFast.classList.remove('active');
     });
@@ -752,6 +777,7 @@ function setupEventListeners() {
     elements.mergeQualityFast.addEventListener('click', () => {
         mergeQuality = 'fast';
         elements.mergeQualityFast.classList.add('active');
+        elements.mergeQualityUltra.classList.remove('active');
         elements.mergeQualityHigh.classList.remove('active');
         elements.mergeQualityMedium.classList.remove('active');
     });
