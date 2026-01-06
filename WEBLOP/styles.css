@@ -397,6 +397,23 @@ h1 {
     border-radius: 3px;
 }
 
+.progress-fill.pulsing {
+    animation: pulse 1.5s ease-in-out infinite;
+    width: 100% !important;
+    opacity: 0.6;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.4;
+        background: linear-gradient(90deg, #4a90e2, #357abd);
+    }
+    50% {
+        opacity: 0.8;
+        background: linear-gradient(90deg, #357abd, #4a90e2);
+    }
+}
+
 .progress-info {
     display: flex;
     justify-content: space-between;

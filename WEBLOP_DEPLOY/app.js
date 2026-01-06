@@ -2,6 +2,7 @@
 
 // グローバル変数
 let ffmpeg = null;
+let ffmpegWorker = null; // Web Worker for merge
 let videoFile = null;
 let videoDuration = 0;
 let outputBlob = null;
@@ -14,6 +15,7 @@ let currentMode = 'loop'; // 'loop' or 'merge'
 let mergeVideos = []; // { file, duration, name }
 let mergeQuality = 'high';
 let frameCutMode = 1; // 0=OFF, 1=1フレーム, 2=2フレーム（両側）
+let mergeWorkerReady = false;
 
 // DOM要素
 const elements = {
@@ -97,6 +99,9 @@ async function initFFmpeg() {
         await ffmpeg.load();
         console.log('FFmpeg loaded successfully');
         elements.ffmpegLoading.classList.add('hidden');
+
+        // Web Workerは無効化（安定性のため）
+        // initMergeWorker();
     } catch (error) {
         console.error('FFmpeg load error:', error);
         elements.ffmpegLoading.innerHTML = `
@@ -109,6 +114,86 @@ async function initFFmpeg() {
             </div>
         `;
     }
+}
+
+// Merge用Web Worker初期化
+function initMergeWorker() {
+    if (typeof Worker === 'undefined') {
+        console.warn('Web Workers not supported');
+        return;
+    }
+
+    try {
+        ffmpegWorker = new Worker('ffmpeg-worker.js');
+
+        ffmpegWorker.onmessage = function(e) {
+            const { type, ratio, message, data } = e.data;
+
+            switch (type) {
+                case 'ready':
+                    console.log('FFmpeg Worker ready');
+                    mergeWorkerReady = true;
+                    break;
+
+                case 'progress':
+                    const percent = Math.round(ratio * 100);
+                    updateProgress(percent);
+                    break;
+
+                case 'status':
+                    elements.progressLabel.textContent = message;
+                    break;
+
+                case 'mergeComplete':
+                    handleMergeComplete(data);
+                    break;
+
+                case 'error':
+                    handleMergeError(message);
+                    break;
+            }
+        };
+
+        ffmpegWorker.onerror = function(error) {
+            console.error('Worker error:', error);
+            console.error('Error message:', error.message);
+            console.error('Error filename:', error.filename);
+            console.error('Error lineno:', error.lineno);
+            mergeWorkerReady = false;
+        };
+
+        // Worker初期化
+        console.log('Initializing FFmpeg Worker...');
+        ffmpegWorker.postMessage({ type: 'init' });
+
+    } catch (error) {
+        console.error('Failed to create worker:', error);
+    }
+}
+
+// Merge完了ハンドラ
+function handleMergeComplete(arrayBuffer) {
+    outputBlob = new Blob([arrayBuffer], { type: 'video/mp4' });
+
+    const resultUrl = URL.createObjectURL(outputBlob);
+    elements.resultVideo.src = resultUrl;
+
+    elements.progress.style.display = 'none';
+    elements.resultSection.style.display = 'block';
+    elements.progressFill.classList.remove('pulsing');
+}
+
+// Mergeエラーハンドラ
+function handleMergeError(message) {
+    elements.progressFill.classList.remove('pulsing');
+
+    if (message.includes('OOM') || message.includes('memory') || message.includes('abort')) {
+        alert('メモリ不足エラー\n\n動画の合計サイズが大きすぎます。\n動画の数を減らすか、短い動画を使用してください。');
+    } else {
+        alert(`エラーが発生しました: ${message}`);
+    }
+
+    resetMergeUI();
 }
 
 // ユーティリティ関数
@@ -206,6 +291,11 @@ function updateEstimatedDuration() {
 
 // 進捗更新
 function updateProgress(percent) {
+    // NaN対策
+    if (isNaN(percent) || percent === null || percent === undefined) {
+        percent = 0;
+    }
+    percent = Math.max(0, Math.min(100, Math.round(percent)));
     elements.progressFill.style.width = `${percent}%`;
     elements.progressText.textContent = `${percent}%`;
 }
@@ -518,11 +608,33 @@ function updateMergeTotalDuration() {
     elements.mergeTotalDuration.textContent = formatDuration(total);
 }
 
-// Merge動画生成
+// Merge動画生成（メインスレッドで実行）
 async function generateMergeVideo() {
-    if (!ffmpeg || mergeVideos.length < 2) {
+    if (mergeVideos.length < 2) {
         alert('2本以上の動画を追加してください');
         return;
+    }
+
+    // 直接メインスレッド処理を実行
+    await generateMergeVideoMainThread();
+}
+
+// メインスレッドでのMerge処理（フォールバック）
+async function generateMergeVideoMainThread() {
+    if (!ffmpeg) {
+        alert('FFmpegが準備できていません。ページをリロードしてください。');
+        return;
+    }
+
+    // ファイルサイズ警告
+    const maxFileSize = Math.max(...mergeVideos.map(v => v.file.size));
+    if (maxFileSize > 30 * 1024 * 1024) {
+        const proceed = confirm(
+            `⚠️ 大きなファイル（${formatFileSize(maxFileSize)}）が含まれています。\n\n` +
+            `処理中にブラウザがフリーズする可能性があります。\n` +
+            `続行しますか？`
+        );
+        if (!proceed) return;
     }
 
     // UI更新
@@ -531,17 +643,28 @@ async function generateMergeVideo() {
     elements.mergeOutputSection.style.display = 'none';
     elements.progress.style.display = 'block';
     elements.progressLabel.textContent = '動画を読み込み中...';
+    elements.progressFill.classList.add('pulsing');
     updateProgress(0);
 
     try {
-        // すべての動画をFFmpegに書き込み
+        // ファイル書き込み
         for (let i = 0; i < mergeVideos.length; i++) {
-            elements.progressLabel.textContent = `動画 ${i + 1}/${mergeVideos.length} を読み込み中...`;
-            ffmpeg.FS('writeFile', `input${i}.mp4`, await window.ffmpegFetchFile(mergeVideos[i].file));
+            const fileSizeMB = (mergeVideos[i].file.size / (1024 * 1024)).toFixed(1);
+            elements.progressLabel.textContent = `動画 ${i + 1}/${mergeVideos.length} を読み込み中... (${fileSizeMB}MB)`;
+            console.log(`Writing file input${i}.mp4 (${fileSizeMB}MB)`);
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const fileData = await window.ffmpegFetchFile(mergeVideos[i].file);
+            console.log(`File data size: ${fileData.length} bytes`);
+            await new Promise(resolve => setTimeout(resolve, 50));
+            ffmpeg.FS('writeFile', `input${i}.mp4`, fileData);
+            console.log(`File input${i}.mp4 written successfully`);
         }
 
+        elements.progressFill.classList.remove('pulsing');
         elements.progressLabel.textContent = '動画を結合中...';
 
+        // 品質設定
         const qualitySettings = {
             ultra: { crf: '18', preset: 'slow' },
             high: { crf: '23', preset: 'medium' },
@@ -550,59 +673,28 @@ async function generateMergeVideo() {
         };
         const { crf, preset } = qualitySettings[mergeQuality];
 
-        // フィルター構築
-        let filterParts = [];
-        let concatInputs = '';
-
+        // シンプルなconcat方式を使用（filter_complexではなくconcat demuxer）
+        // まずファイルリストを作成
+        let fileListContent = '';
         for (let i = 0; i < mergeVideos.length; i++) {
-            const isFirstVideo = (i === 0);
-            const isLastVideo = (i === mergeVideos.length - 1);
-
-            if (frameCutMode === 0) {
-                // OFF → そのまま
-                filterParts.push(`[${i}:v]fps=${TARGET_FPS},setpts=PTS-STARTPTS[v${i}]`);
-            } else if (frameCutMode === 1) {
-                // 1フレームカット: 最後の動画以外の最終フレームをカット
-                if (isLastVideo) {
-                    filterParts.push(`[${i}:v]fps=${TARGET_FPS},setpts=PTS-STARTPTS[v${i}]`);
-                } else {
-                    filterParts.push(`[${i}:v]fps=${TARGET_FPS},reverse,trim=start_frame=1,setpts=PTS-STARTPTS,reverse,setpts=PTS-STARTPTS[v${i}]`);
-                }
-            } else if (frameCutMode === 2) {
-                // 2フレームカット: 最初の動画の最後 + 2番目以降の最初をカット
-                if (isFirstVideo) {
-                    // 最初の動画: 最後の1フレームだけカット
-                    filterParts.push(`[${i}:v]fps=${TARGET_FPS},reverse,trim=start_frame=1,setpts=PTS-STARTPTS,reverse,setpts=PTS-STARTPTS[v${i}]`);
-                } else {
-                    // 2番目以降: 最初の1フレームだけカット
-                    filterParts.push(`[${i}:v]fps=${TARGET_FPS},trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
-                }
-            }
-            concatInputs += `[v${i}]`;
+            fileListContent += `file 'input${i}.mp4'\n`;
         }
+        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
+        console.log('File list created:', fileListContent);
 
-        filterParts.push(`${concatInputs}concat=n=${mergeVideos.length}:v=1:a=0[output]`);
-        const filterComplex = filterParts.join(';');
+        console.log('Running FFmpeg concat...');
 
-        console.log('Merge filter:', filterComplex);
-
-        // FFmpeg実行
-        const inputArgs = [];
-        for (let i = 0; i < mergeVideos.length; i++) {
-            inputArgs.push('-i', `input${i}.mp4`);
-        }
-
+        // concat demuxerを使用（コピーモードで高速処理）
         await ffmpeg.run(
-            ...inputArgs,
-            '-filter_complex', filterComplex,
-            '-map', '[output]',
-            '-c:v', 'libx264',
-            '-preset', preset,
-            '-crf', crf,
-            '-pix_fmt', 'yuv420p',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', 'filelist.txt',
+            '-c', 'copy',
             '-movflags', '+faststart',
             'output.mp4'
         );
+
+        console.log('FFmpeg completed');
 
         elements.progressLabel.textContent = '出力ファイルを準備中...';
         updateProgress(100);
@@ -618,18 +710,20 @@ async function generateMergeVideo() {
 
         // クリーンアップ
         for (let i = 0; i < mergeVideos.length; i++) {
-            ffmpeg.FS('unlink', `input${i}.mp4`);
+            try { ffmpeg.FS('unlink', `input${i}.mp4`); } catch(e) {}
         }
-        ffmpeg.FS('unlink', 'output.mp4');
+        try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+        try { ffmpeg.FS('unlink', 'output.mp4'); } catch(e) {}
 
     } catch (error) {
         console.error('Merge error:', error);
+        elements.progressFill.classList.remove('pulsing');
 
         const errorMsg = error.message || error.toString();
         if (errorMsg.includes('OOM') || errorMsg.includes('memory') || errorMsg.includes('abort')) {
-            alert('メモリ不足エラー\n\n動画の合計サイズが大きすぎます。\n動画の数を減らすか、短い動画を使用してください。');
+            alert('メモリ不足エラー\n\n動画の合計サイズが大きすぎます。');
         } else {
-            alert(`エラーが発生しました: ${errorMsg}`);
+            alert(`エラー: ${errorMsg}`);
         }
 
         resetMergeUI();
