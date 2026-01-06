@@ -1,0 +1,18 @@
+{
+  "name": "weblop",
+  "version": "1.0.0",
+  "description": "Web Loop Video Creator - Browser-based loop video creation tool",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "video",
+    "loop",
+    "ffmpeg",
+    "wasm",
+    "web"
+  ],
+  "author": "",
+  "license": "MIT"
+}
