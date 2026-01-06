@@ -543,6 +543,120 @@ h1 {
     opacity: 0.6;
 }
 
+/* モード切り替えタブ */
+.mode-tabs {
+    display: flex;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+}
+
+.mode-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+}
+
+.mode-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-tab.active {
+    background: var(--accent-color);
+    color: white;
+}
+
+/* Merge動画リスト */
+.merge-video-list {
+    background: var(--bg-card-secondary);
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+}
+
+.list-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.list-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.list-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.merge-videos {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.merge-video-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.merge-video-item .video-number {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-color);
+    min-width: 24px;
+}
+
+.merge-video-item .video-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.merge-video-item .video-duration {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.merge-video-item .remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    font-size: 14px;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.merge-video-item .remove-btn:hover {
+    opacity: 1;
+    color: #dc3545;
+}
+
 /* レスポンシブ */
 @media (max-width: 500px) {
     .app {
@@ -570,5 +684,14 @@ h1 {
     .quality-btn {
         flex: 1;
         text-align: center;
+    }
+
+    .mode-tabs {
+        margin-bottom: 16px;
+    }
+
+    .mode-tab {
+        padding: 10px 16px;
+        font-size: 13px;
     }
 }

@@ -8,8 +8,12 @@ let outputBlob = null;
 let loopMode = 'reverse';
 let quality = 'high';
 const TARGET_FPS = 30;
-// 常にfps制限を適用（高fpsビデオの安全策）
-const ALWAYS_LIMIT_FPS = true;
+
+// Merge用変数
+let currentMode = 'loop'; // 'loop' or 'merge'
+let mergeVideos = []; // { file, duration, name }
+let mergeQuality = 'high';
+let frameDedupe = true; // フレーム重複除去ON/OFF
 
 // DOM要素
 const elements = {
@@ -47,7 +51,29 @@ const elements = {
     // 品質
     qualityHigh: document.getElementById('qualityHigh'),
     qualityMedium: document.getElementById('qualityMedium'),
-    qualityFast: document.getElementById('qualityFast')
+    qualityFast: document.getElementById('qualityFast'),
+    // モードタブ
+    tabLoop: document.getElementById('tabLoop'),
+    tabMerge: document.getElementById('tabMerge'),
+    loopMode: document.getElementById('loopMode'),
+    mergeMode: document.getElementById('mergeMode'),
+    // Merge用
+    mergeDropZone: document.getElementById('mergeDropZone'),
+    mergeFileInput: document.getElementById('mergeFileInput'),
+    mergeInputSection: document.getElementById('mergeInputSection'),
+    mergeVideoList: document.getElementById('mergeVideoList'),
+    mergeVideos: document.getElementById('mergeVideos'),
+    mergeVideoCount: document.getElementById('mergeVideoCount'),
+    addMoreBtn: document.getElementById('addMoreBtn'),
+    mergeControlsSection: document.getElementById('mergeControlsSection'),
+    dedupeOn: document.getElementById('dedupeOn'),
+    dedupeOff: document.getElementById('dedupeOff'),
+    mergeQualityHigh: document.getElementById('mergeQualityHigh'),
+    mergeQualityMedium: document.getElementById('mergeQualityMedium'),
+    mergeQualityFast: document.getElementById('mergeQualityFast'),
+    mergeTotalDuration: document.getElementById('mergeTotalDuration'),
+    mergeOutputSection: document.getElementById('mergeOutputSection'),
+    mergeGenerateBtn: document.getElementById('mergeGenerateBtn')
 };
 
 // FFmpeg初期化
@@ -327,6 +353,230 @@ function resetUI() {
     elements.loopCount.value = 3;
 }
 
+// ===== MERGE MODE FUNCTIONS =====
+
+// モード切り替え
+function switchMode(mode) {
+    currentMode = mode;
+    elements.tabLoop.classList.toggle('active', mode === 'loop');
+    elements.tabMerge.classList.toggle('active', mode === 'merge');
+    elements.loopMode.style.display = mode === 'loop' ? 'block' : 'none';
+    elements.mergeMode.style.display = mode === 'merge' ? 'block' : 'none';
+
+    // 結果セクションを非表示
+    elements.resultSection.style.display = 'none';
+    elements.progress.style.display = 'none';
+}
+
+// 複数動画ファイル処理
+async function handleMergeFiles(files) {
+    const videoFiles = Array.from(files).filter(f => f.type.startsWith('video/'));
+
+    if (videoFiles.length === 0) {
+        alert('動画ファイルを選択してください');
+        return;
+    }
+
+    // 各動画のメタデータを取得
+    for (const file of videoFiles) {
+        const duration = await getVideoDuration(file);
+        mergeVideos.push({
+            file: file,
+            name: file.name,
+            duration: duration
+        });
+    }
+
+    updateMergeVideoList();
+}
+
+// 動画の長さを取得
+function getVideoDuration(file) {
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = () => {
+            URL.revokeObjectURL(video.src);
+            resolve(video.duration);
+        };
+        video.onerror = () => {
+            resolve(0);
+        };
+        video.src = URL.createObjectURL(file);
+    });
+}
+
+// Merge動画リスト更新
+function updateMergeVideoList() {
+    if (mergeVideos.length === 0) {
+        elements.mergeInputSection.style.display = 'block';
+        elements.mergeVideoList.style.display = 'none';
+        elements.mergeControlsSection.style.display = 'none';
+        elements.mergeOutputSection.style.display = 'none';
+        return;
+    }
+
+    elements.mergeInputSection.style.display = 'none';
+    elements.mergeVideoList.style.display = 'block';
+    elements.mergeControlsSection.style.display = 'flex';
+    elements.mergeOutputSection.style.display = 'block';
+
+    elements.mergeVideoCount.textContent = mergeVideos.length;
+
+    // リスト描画
+    elements.mergeVideos.innerHTML = mergeVideos.map((v, i) => `
+        <div class="merge-video-item" data-index="${i}">
+            <span class="video-number">${i + 1}</span>
+            <span class="video-name">${v.name}</span>
+            <span class="video-duration">${formatDuration(v.duration)}</span>
+            <button class="remove-btn" onclick="removeMergeVideo(${i})">✕</button>
+        </div>
+    `).join('');
+
+    updateMergeTotalDuration();
+}
+
+// 動画を削除
+function removeMergeVideo(index) {
+    mergeVideos.splice(index, 1);
+    updateMergeVideoList();
+}
+
+// グローバルに公開
+window.removeMergeVideo = removeMergeVideo;
+
+// 合計時間更新
+function updateMergeTotalDuration() {
+    const total = mergeVideos.reduce((sum, v) => sum + v.duration, 0);
+    elements.mergeTotalDuration.textContent = formatDuration(total);
+}
+
+// Merge動画生成
+async function generateMergeVideo() {
+    if (!ffmpeg || mergeVideos.length < 2) {
+        alert('2本以上の動画を追加してください');
+        return;
+    }
+
+    // UI更新
+    elements.mergeVideoList.style.display = 'none';
+    elements.mergeControlsSection.style.display = 'none';
+    elements.mergeOutputSection.style.display = 'none';
+    elements.progress.style.display = 'block';
+    elements.progressLabel.textContent = '動画を読み込み中...';
+    updateProgress(0);
+
+    try {
+        // すべての動画をFFmpegに書き込み
+        for (let i = 0; i < mergeVideos.length; i++) {
+            elements.progressLabel.textContent = `動画 ${i + 1}/${mergeVideos.length} を読み込み中...`;
+            ffmpeg.FS('writeFile', `input${i}.mp4`, await window.ffmpegFetchFile(mergeVideos[i].file));
+        }
+
+        elements.progressLabel.textContent = '動画を結合中...';
+
+        const qualitySettings = {
+            high: { crf: '23', preset: 'medium' },
+            medium: { crf: '28', preset: 'fast' },
+            fast: { crf: '32', preset: 'ultrafast' }
+        };
+        const { crf, preset } = qualitySettings[mergeQuality];
+
+        // フィルター構築
+        let filterParts = [];
+        let concatInputs = '';
+
+        for (let i = 0; i < mergeVideos.length; i++) {
+            if (i === 0) {
+                // 最初の動画はそのまま
+                filterParts.push(`[${i}:v]fps=${TARGET_FPS},setpts=PTS-STARTPTS[v${i}]`);
+            } else if (frameDedupe) {
+                // 2本目以降: フレーム重複除去ON → 最初のフレームをカット
+                filterParts.push(`[${i}:v]fps=${TARGET_FPS},trim=start_frame=1,setpts=PTS-STARTPTS[v${i}]`);
+            } else {
+                // フレーム重複除去OFF → そのまま
+                filterParts.push(`[${i}:v]fps=${TARGET_FPS},setpts=PTS-STARTPTS[v${i}]`);
+            }
+            concatInputs += `[v${i}]`;
+        }
+
+        filterParts.push(`${concatInputs}concat=n=${mergeVideos.length}:v=1:a=0[output]`);
+        const filterComplex = filterParts.join(';');
+
+        console.log('Merge filter:', filterComplex);
+
+        // FFmpeg実行
+        const inputArgs = [];
+        for (let i = 0; i < mergeVideos.length; i++) {
+            inputArgs.push('-i', `input${i}.mp4`);
+        }
+
+        await ffmpeg.run(
+            ...inputArgs,
+            '-filter_complex', filterComplex,
+            '-map', '[output]',
+            '-c:v', 'libx264',
+            '-preset', preset,
+            '-crf', crf,
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            'output.mp4'
+        );
+
+        elements.progressLabel.textContent = '出力ファイルを準備中...';
+        updateProgress(100);
+
+        const outputData = ffmpeg.FS('readFile', 'output.mp4');
+        outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
+
+        const resultUrl = URL.createObjectURL(outputBlob);
+        elements.resultVideo.src = resultUrl;
+
+        elements.progress.style.display = 'none';
+        elements.resultSection.style.display = 'block';
+
+        // クリーンアップ
+        for (let i = 0; i < mergeVideos.length; i++) {
+            ffmpeg.FS('unlink', `input${i}.mp4`);
+        }
+        ffmpeg.FS('unlink', 'output.mp4');
+
+    } catch (error) {
+        console.error('Merge error:', error);
+
+        const errorMsg = error.message || error.toString();
+        if (errorMsg.includes('OOM') || errorMsg.includes('memory') || errorMsg.includes('abort')) {
+            alert('メモリ不足エラー\n\n動画の合計サイズが大きすぎます。\n動画の数を減らすか、短い動画を使用してください。');
+        } else {
+            alert(`エラーが発生しました: ${errorMsg}`);
+        }
+
+        resetMergeUI();
+    }
+}
+
+// Merge UIリセット
+function resetMergeUI() {
+    mergeVideos = [];
+    updateMergeVideoList();
+    elements.progress.style.display = 'none';
+    elements.resultSection.style.display = 'none';
+}
+
+// ダウンロード（Merge用）
+function downloadMergeResult() {
+    if (!outputBlob) return;
+
+    const fileName = `merged_${Date.now()}.mp4`;
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(outputBlob);
+    link.download = fileName;
+    link.click();
+}
+
+// ===== END MERGE MODE FUNCTIONS =====
+
 // テーマ切り替え
 function setTheme(theme) {
     document.body.className = '';
@@ -421,8 +671,93 @@ function setupEventListeners() {
 
     // 生成・ダウンロード
     elements.generateBtn.addEventListener('click', generateLoopVideo);
-    elements.downloadBtn.addEventListener('click', downloadResult);
-    elements.newVideoBtn.addEventListener('click', resetUI);
+    elements.downloadBtn.addEventListener('click', () => {
+        if (currentMode === 'merge') {
+            downloadMergeResult();
+        } else {
+            downloadResult();
+        }
+    });
+    elements.newVideoBtn.addEventListener('click', () => {
+        if (currentMode === 'merge') {
+            resetMergeUI();
+        } else {
+            resetUI();
+        }
+    });
+
+    // ===== MERGE MODE EVENT LISTENERS =====
+
+    // タブ切り替え
+    elements.tabLoop.addEventListener('click', () => switchMode('loop'));
+    elements.tabMerge.addEventListener('click', () => switchMode('merge'));
+
+    // Mergeドラッグ&ドロップ
+    elements.mergeDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        elements.mergeDropZone.classList.add('drag-over');
+    });
+
+    elements.mergeDropZone.addEventListener('dragleave', () => {
+        elements.mergeDropZone.classList.remove('drag-over');
+    });
+
+    elements.mergeDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        elements.mergeDropZone.classList.remove('drag-over');
+        handleMergeFiles(e.dataTransfer.files);
+    });
+
+    elements.mergeDropZone.addEventListener('click', () => {
+        elements.mergeFileInput.click();
+    });
+
+    elements.mergeFileInput.addEventListener('change', (e) => {
+        handleMergeFiles(e.target.files);
+        e.target.value = ''; // リセット
+    });
+
+    elements.addMoreBtn.addEventListener('click', () => {
+        elements.mergeFileInput.click();
+    });
+
+    // フレーム重複除去
+    elements.dedupeOn.addEventListener('click', () => {
+        frameDedupe = true;
+        elements.dedupeOn.classList.add('active');
+        elements.dedupeOff.classList.remove('active');
+    });
+
+    elements.dedupeOff.addEventListener('click', () => {
+        frameDedupe = false;
+        elements.dedupeOff.classList.add('active');
+        elements.dedupeOn.classList.remove('active');
+    });
+
+    // Merge品質
+    elements.mergeQualityHigh.addEventListener('click', () => {
+        mergeQuality = 'high';
+        elements.mergeQualityHigh.classList.add('active');
+        elements.mergeQualityMedium.classList.remove('active');
+        elements.mergeQualityFast.classList.remove('active');
+    });
+
+    elements.mergeQualityMedium.addEventListener('click', () => {
+        mergeQuality = 'medium';
+        elements.mergeQualityMedium.classList.add('active');
+        elements.mergeQualityHigh.classList.remove('active');
+        elements.mergeQualityFast.classList.remove('active');
+    });
+
+    elements.mergeQualityFast.addEventListener('click', () => {
+        mergeQuality = 'fast';
+        elements.mergeQualityFast.classList.add('active');
+        elements.mergeQualityHigh.classList.remove('active');
+        elements.mergeQualityMedium.classList.remove('active');
+    });
+
+    // Merge生成
+    elements.mergeGenerateBtn.addEventListener('click', generateMergeVideo);
 }
 
 // 初期化

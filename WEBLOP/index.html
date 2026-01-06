@@ -23,10 +23,18 @@
                 <button id="themeDay" class="theme-btn">Day</button>
                 <button id="themePink" class="theme-btn">Wow</button>
             </div>
-            <h1>WEBL<span id="lopO">O</span>P<span class="version">v1.4</span></h1>
+            <h1>WEBL<span id="lopO">O</span>P<span class="version">v1.5</span></h1>
         </header>
 
+        <!-- モード切り替えタブ -->
+        <div class="mode-tabs">
+            <button id="tabLoop" class="mode-tab active">Loop</button>
+            <button id="tabMerge" class="mode-tab">Merge</button>
+        </div>
+
         <div class="main">
+            <!-- ===== LOOP MODE ===== -->
+            <div id="loopMode">
             <!-- ファイル選択セクション -->
             <div id="inputSection" class="input-section">
                 <div id="dropZone" class="drop-zone">
@@ -98,6 +106,68 @@
                     <span>※ 生成後にダウンロードできます</span>
                 </div>
             </div>
+            </div>
+            <!-- ===== END LOOP MODE ===== -->
+
+            <!-- ===== MERGE MODE ===== -->
+            <div id="mergeMode" style="display: none;">
+                <!-- 複数ファイル選択 -->
+                <div id="mergeInputSection" class="input-section">
+                    <div id="mergeDropZone" class="drop-zone">
+                        <span class="icon">📁</span>
+                        <span>複数の動画をドラッグ&ドロップ</span>
+                        <span class="drop-hint">または クリックして選択</span>
+                    </div>
+                    <input type="file" id="mergeFileInput" accept="video/*" multiple hidden>
+                </div>
+
+                <!-- 動画リスト -->
+                <div id="mergeVideoList" class="merge-video-list" style="display: none;">
+                    <div class="list-header">
+                        <span class="list-title">動画リスト</span>
+                        <span class="list-count">(<span id="mergeVideoCount">0</span>本)</span>
+                    </div>
+                    <div id="mergeVideos" class="merge-videos"></div>
+                    <button id="addMoreBtn" class="btn change-btn">+ 動画を追加</button>
+                </div>
+
+                <!-- Mergeコントロール -->
+                <div id="mergeControlsSection" class="controls" style="display: none;">
+                    <div class="control-group">
+                        <label class="control-label">フレーム重複除去</label>
+                        <div class="loop-mode-switcher">
+                            <button id="dedupeOn" class="mode-btn active">ON</button>
+                            <button id="dedupeOff" class="mode-btn">OFF</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label class="control-label">出力品質</label>
+                        <div class="quality-switcher">
+                            <button id="mergeQualityHigh" class="quality-btn active" title="高品質">High</button>
+                            <button id="mergeQualityMedium" class="quality-btn" title="標準品質">Medium</button>
+                            <button id="mergeQualityFast" class="quality-btn" title="高速処理">Fast</button>
+                        </div>
+                    </div>
+
+                    <div id="mergeTotalInfo" class="total-info">
+                        <span class="total-label">推定出力時間:</span>
+                        <span id="mergeTotalDuration" class="total-value">-</span>
+                    </div>
+                </div>
+
+                <!-- Merge出力ボタン -->
+                <div id="mergeOutputSection" class="output-section" style="display: none;">
+                    <button id="mergeGenerateBtn" class="btn output-btn">
+                        <span class="icon">🎬</span>
+                        <span>動画を結合</span>
+                    </button>
+                    <div class="output-note">
+                        <span>※ 2本目以降の最初のフレームは自動カットされます</span>
+                    </div>
+                </div>
+            </div>
+            <!-- ===== END MERGE MODE ===== -->
 
             <!-- 進捗表示 -->
             <div id="progress" class="progress" style="display: none;">
