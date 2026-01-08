@@ -174,12 +174,12 @@ async function initFFmpeg() {
         log: true,
         progress: ({ ratio }) => {
             // マージモードの場合、進捗を20-70%にスケール（読込20%、FFmpeg50%、後処理30%）
-            // ループモードの場合、進捗を0-70%にスケール
+            // ループモードの場合、進捗を5-80%にスケール（読込5%、FFmpeg75%、後処理20%）
             let percent;
             if (currentProcessMode === 'merge') {
                 percent = Math.round(20 + ratio * 50); // 20% ~ 70%
             } else {
-                percent = Math.round(ratio * 70); // 0% ~ 70%
+                percent = Math.round(5 + ratio * 75); // 5% ~ 80%
             }
             updateProgress(percent);
         }
@@ -333,8 +333,61 @@ async function handleVideoFile(file) {
     elements.resultSection.style.display = 'none';
 }
 
+// フレームレートを推定（requestVideoFrameCallbackを使用）
+function estimateFrameRate(video) {
+    return new Promise((resolve) => {
+        if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) {
+            // サポートしていない場合は不明として返す
+            resolve(null);
+            return;
+        }
+
+        let frameCount = 0;
+        let startTime = null;
+        const targetFrames = 10; // 10フレーム分サンプリング
+
+        video.currentTime = 0;
+        video.muted = true;
+
+        const countFrame = (now, metadata) => {
+            if (startTime === null) {
+                startTime = metadata.mediaTime;
+            }
+            frameCount++;
+
+            if (frameCount >= targetFrames) {
+                const elapsed = metadata.mediaTime - startTime;
+                if (elapsed > 0) {
+                    const fps = Math.round(frameCount / elapsed);
+                    video.pause();
+                    video.currentTime = 0;
+                    resolve(fps);
+                } else {
+                    resolve(null);
+                }
+            } else {
+                video.requestVideoFrameCallback(countFrame);
+            }
+        };
+
+        video.requestVideoFrameCallback(countFrame);
+        video.play().catch(() => resolve(null));
+
+        // タイムアウト（2秒）
+        setTimeout(() => {
+            video.pause();
+            video.currentTime = 0;
+            if (frameCount > 2) {
+                resolve(Math.round(frameCount * 5)); // 推定
+            } else {
+                resolve(null);
+            }
+        }, 2000);
+    });
+}
+
 // 動画の警告チェック
-function checkVideoWarnings(file, video) {
+async function checkVideoWarnings(file, video) {
     const warnings = [];
     const notices = [];
 
@@ -344,6 +397,18 @@ function checkVideoWarnings(file, video) {
     // 長さ警告（10秒以上）
     if (video.duration > 10) {
         warnings.push(`動画が10秒以上 (${formatDuration(video.duration)}) - 処理に失敗する可能性があります`);
+    }
+
+    // フレームレート検出を試みる
+    try {
+        const fps = await estimateFrameRate(video);
+        if (fps && fps > 60) {
+            warnings.push(`高フレームレート動画 (${fps}fps) - 処理が非常に遅くなるか停止する可能性があります。事前に60fps以下に変換することを推奨します`);
+        } else if (fps) {
+            notices.push(`検出されたフレームレート: ${fps}fps`);
+        }
+    } catch (e) {
+        console.log('FPS detection failed:', e);
     }
 
     // メッセージ構築
@@ -398,17 +463,23 @@ async function generateLoopVideo() {
 
     const loopCount = parseInt(elements.loopCount.value) || 3;
 
+    // 進捗計算用にモードを設定
+    currentProcessMode = 'loop';
+
     // UI更新
     elements.controlsSection.style.display = 'none';
     elements.outputSection.style.display = 'none';
     elements.progress.style.display = 'block';
-    elements.progressLabel.textContent = '動画を読み込み中...';
+    elements.progressFill.classList.add('pulsing');
+    startProgressLabelAnimation('動画を読み込み中');
     updateProgress(0);
 
     try {
         ffmpeg.FS('writeFile', 'input.mp4', await window.ffmpegFetchFile(videoFile));
+        updateProgress(5);
 
-        elements.progressLabel.textContent = 'ループ動画を生成中...';
+        elements.progressFill.classList.remove('pulsing');
+        startProgressLabelAnimation('ループ動画を生成中');
 
         const qualitySettings = {
             ultra: { crf: '18', preset: 'slow' },
@@ -474,13 +545,13 @@ async function generateLoopVideo() {
         }
 
         startProgressLabelAnimation('出力ファイルを準備中');
-        // 70%から85%まで滑らかにアニメーション
-        startProgressAnimation(70, 85, 2000);
+        // 80%から90%まで滑らかにアニメーション
+        startProgressAnimation(80, 90, 2000);
 
         const outputData = ffmpeg.FS('readFile', 'output.mp4');
 
         stopProgressAnimation();
-        updateProgress(90);
+        updateProgress(95);
 
         outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
 
@@ -488,8 +559,8 @@ async function generateLoopVideo() {
         elements.resultVideo.src = resultUrl;
 
         stopProgressLabelAnimation();
-        // 90%から100%まで滑らかにアニメーション
-        startProgressAnimation(90, 100, 500);
+        // 95%から100%まで滑らかにアニメーション
+        startProgressAnimation(95, 100, 400);
 
         // 少し待ってから完了表示（アニメーションが見えるように）
         await new Promise(resolve => setTimeout(resolve, 600));
