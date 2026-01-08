@@ -89,7 +89,7 @@ function updateMergeNote() {
     const commonNote = '（同じ解像度・フレームレートの動画のみ）';
 
     if (frameCutMode === 0) {
-        elements.mergeNote.textContent = `※ OFF: そのまま結合${commonNote}`;
+        elements.mergeNote.textContent = `※ OFF: そのまま結合（高速）${commonNote}`;
     } else if (frameCutMode === 1) {
         elements.mergeNote.textContent = `※ 1F: 繋ぎ目の重複1枚削除${commonNote}`;
     } else if (frameCutMode === 2) {
@@ -954,21 +954,35 @@ async function generateMergeVideoMainThread() {
         console.log('Frame cut mode:', frameCutMode);
 
         if (frameCutMode === 0) {
-            // フレームカットなし → コピーモード（高速）
-            // タイムスタンプの問題を修正するためのオプションを追加
+            // フレームカットなし → コピーモード
+            // 各動画を個別にTS形式に変換してから結合（タイムスタンプ互換性のため）
+            // 先にTS形式に変換
+            for (let i = 0; i < mergeVideos.length; i++) {
+                await ffmpeg.run(
+                    '-i', `input${i}.mp4`,
+                    '-c', 'copy',
+                    '-bsf:v', 'h264_mp4toannexb',
+                    '-f', 'mpegts',
+                    `input${i}.ts`
+                );
+            }
+
+            // TSファイルをconcatプロトコルで結合
+            const tsFiles = mergeVideos.map((_, i) => `input${i}.ts`).join('|');
             await ffmpeg.run(
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', 'filelist.txt',
+                '-i', `concat:${tsFiles}`,
                 '-c', 'copy',
-                '-fflags', '+genpts',
-                '-avoid_negative_ts', 'make_zero',
+                '-bsf:a', 'aac_adtstoasc',
                 '-movflags', '+faststart',
                 'output.mp4'
             );
+
+            // TSファイルをクリーンアップ
+            for (let i = 0; i < mergeVideos.length; i++) {
+                try { ffmpeg.FS('unlink', `input${i}.ts`); } catch(e) {}
+            }
         } else {
             // フレームカットあり → filter_complex使用（再エンコード）
-            // 同じ解像度の動画のみ受け付けるため、スケール不要
             let filterParts = [];
             let concatInputs = '';
 
