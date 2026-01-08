@@ -732,3 +732,150 @@ h1 {
         font-size: 13px;
     }
 }
+
+/* ===== Warning Modal ===== */
+.warning-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+}
+
+.warning-modal-content {
+    background: linear-gradient(135deg, #2a1a1a 0%, #1a1a1a 100%);
+    border: 2px solid #ff4444;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 0 30px rgba(255, 68, 68, 0.3);
+}
+
+.warning-icon {
+    font-size: 48px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.warning-modal-content h2 {
+    color: #ff6666;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 20px;
+}
+
+.warning-text {
+    background: rgba(255, 68, 68, 0.1);
+    border: 1px solid rgba(255, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.warning-text p {
+    color: #e0e0e0;
+    margin-bottom: 12px;
+}
+
+.warning-text ul {
+    color: #ffaaaa;
+    padding-left: 20px;
+    margin-bottom: 12px;
+}
+
+.warning-text li {
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.warning-text strong {
+    color: #ff6666;
+}
+
+.warning-tip {
+    color: #88cc88 !important;
+    font-size: 13px;
+    margin-top: 12px;
+    margin-bottom: 0 !important;
+}
+
+.warning-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.2s ease;
+}
+
+.warning-checkbox:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.warning-checkbox input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #ff4444;
+}
+
+.warning-checkbox span {
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.warning-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.warning-cancel-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ccc;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.warning-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.warning-proceed-btn {
+    flex: 1;
+    background: #ff4444;
+    border: none;
+    color: white;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.warning-proceed-btn:disabled {
+    background: #666;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.warning-proceed-btn:not(:disabled):hover {
+    background: #ff6666;
+    transform: translateY(-1px);
+}

@@ -721,6 +721,53 @@ function updateMergeTotalDuration() {
     elements.mergeTotalDuration.textContent = formatDuration(total);
 }
 
+// フレームカット警告モーダル
+function showFrameCutWarning() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('frameCutWarningModal');
+        const checkbox = document.getElementById('warningConfirmCheck');
+        const proceedBtn = document.getElementById('warningProceedBtn');
+        const cancelBtn = document.getElementById('warningCancelBtn');
+
+        // リセット
+        checkbox.checked = false;
+        proceedBtn.disabled = true;
+
+        // モーダル表示
+        modal.style.display = 'flex';
+
+        // チェックボックス変更
+        const onCheckChange = () => {
+            proceedBtn.disabled = !checkbox.checked;
+        };
+
+        // 実行ボタン
+        const onProceed = () => {
+            cleanup();
+            modal.style.display = 'none';
+            resolve(true);
+        };
+
+        // キャンセルボタン
+        const onCancel = () => {
+            cleanup();
+            modal.style.display = 'none';
+            resolve(false);
+        };
+
+        // クリーンアップ
+        const cleanup = () => {
+            checkbox.removeEventListener('change', onCheckChange);
+            proceedBtn.removeEventListener('click', onProceed);
+            cancelBtn.removeEventListener('click', onCancel);
+        };
+
+        checkbox.addEventListener('change', onCheckChange);
+        proceedBtn.addEventListener('click', onProceed);
+        cancelBtn.addEventListener('click', onCancel);
+    });
+}
+
 // Merge動画生成（メインスレッドで実行）
 async function generateMergeVideo() {
     if (mergeVideos.length < 2) {
@@ -730,15 +777,7 @@ async function generateMergeVideo() {
 
     // フレームカットモードの警告
     if (frameCutMode > 0) {
-        const proceed = confirm(
-            `⚠️ フレームカットモード（${frameCutMode}F）が選択されています\n\n` +
-            `この処理には以下の注意点があります：\n\n` +
-            `• 動画の長さや本数によって数時間かかる場合があります\n` +
-            `• 処理中にブラウザが固まる・停止する場合があります\n` +
-            `• 高解像度の動画は特に時間がかかります\n\n` +
-            `それでも続行しますか？\n\n` +
-            `（高速処理したい場合は「OFF」モードをお使いください）`
-        );
+        const proceed = await showFrameCutWarning();
         if (!proceed) return;
     }
 
@@ -1006,6 +1045,33 @@ function setTheme(theme) {
     elements.themeDark.classList.toggle('active', theme === 'dark');
     elements.themeDay.classList.toggle('active', theme === 'day');
     elements.themePink.classList.toggle('active', theme === 'pink');
+
+    // タイトル変更（Wowモード用）
+    const titlePrefix = document.getElementById('titlePrefix');
+    const titleSuffix = document.getElementById('titleSuffix');
+    const lopO = document.getElementById('lopO');
+    if (titlePrefix && titleSuffix && lopO) {
+        if (theme === 'pink') {
+            titlePrefix.textContent = 'NSFW';
+            lopO.textContent = 'OOOO';
+            titleSuffix.textContent = 'P♥';
+        } else {
+            titlePrefix.textContent = 'WEBLO';
+            lopO.textContent = 'OOO';
+            titleSuffix.textContent = 'P';
+        }
+    }
+
+    // タブ名変更（Wowモード用）
+    if (elements.tabLoop && elements.tabMerge) {
+        if (theme === 'pink') {
+            elements.tabLoop.textContent = 'Loop♥';
+            elements.tabMerge.textContent = 'Merge♥';
+        } else {
+            elements.tabLoop.textContent = 'Loop';
+            elements.tabMerge.textContent = 'Merge';
+        }
+    }
 }
 
 // イベントリスナー設定

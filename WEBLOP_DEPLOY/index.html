@@ -7,6 +7,31 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Frame Cut Warning Modal -->
+    <div id="frameCutWarningModal" class="warning-modal" style="display: none;">
+        <div class="warning-modal-content">
+            <div class="warning-icon">⚠️</div>
+            <h2>フレームカットモード警告</h2>
+            <div class="warning-text">
+                <p><strong>この処理には以下の注意点があります：</strong></p>
+                <ul>
+                    <li>動画の長さや本数によって<strong>数時間</strong>かかる場合があります</li>
+                    <li>処理中にブラウザが<strong>固まる・停止</strong>する場合があります</li>
+                    <li>高解像度の動画は特に時間がかかります</li>
+                </ul>
+                <p class="warning-tip">💡 高速処理したい場合は「OFF」モードをお使いください</p>
+            </div>
+            <label class="warning-checkbox">
+                <input type="checkbox" id="warningConfirmCheck">
+                <span>上記の注意事項を理解しました</span>
+            </label>
+            <div class="warning-buttons">
+                <button id="warningCancelBtn" class="btn warning-cancel-btn">キャンセル</button>
+                <button id="warningProceedBtn" class="btn warning-proceed-btn" disabled>実行する</button>
+            </div>
+        </div>
+    </div>
+
     <!-- FFmpeg Loading Overlay -->
     <div id="ffmpegLoading" class="loading-overlay">
         <div class="loading-content">
@@ -18,7 +43,7 @@
 
     <div class="app">
         <header class="header">
-            <h1>WEBLO<span id="lopO">OOO</span>P<span class="version">v1.8</span></h1>
+            <h1><span id="titlePrefix">WEBLO</span><span id="lopO">OOO</span><span id="titleSuffix">P</span><span class="version">v2.0</span></h1>
             <div class="theme-switcher">
                 <button id="themeDark" class="theme-btn active">Night</button>
                 <button id="themeDay" class="theme-btn">Day</button>
