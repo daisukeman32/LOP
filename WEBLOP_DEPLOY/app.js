@@ -14,7 +14,7 @@ const TARGET_FPS = 30;
 let currentMode = 'loop'; // 'loop' or 'merge'
 let mergeVideos = []; // { file, duration, name }
 let mergeQuality = 'high';
-let frameCutMode = 1; // 0=OFF, 1=1フレーム, 2=2フレーム（両側）
+let frameCutMode = 0; // 0=OFF, 1=1フレーム, 2=2フレーム（両側）
 let mergeWorkerReady = false;
 
 // DOM要素
@@ -884,11 +884,14 @@ async function generateMergeVideoMainThread() {
 
         if (frameCutMode === 0) {
             // フレームカットなし → コピーモード（高速）
+            // タイムスタンプの問題を修正するためのオプションを追加
             await ffmpeg.run(
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', 'filelist.txt',
                 '-c', 'copy',
+                '-fflags', '+genpts',
+                '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',
                 'output.mp4'
             );

@@ -740,7 +740,7 @@ h1 {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.9);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -749,60 +749,59 @@ h1 {
 }
 
 .warning-modal-content {
-    background: linear-gradient(135deg, #2a1a1a 0%, #1a1a1a 100%);
-    border: 2px solid #ff4444;
-    border-radius: 16px;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 8px;
     padding: 32px;
     max-width: 480px;
     width: 100%;
-    box-shadow: 0 0 30px rgba(255, 68, 68, 0.3);
 }
 
 .warning-icon {
-    font-size: 48px;
+    font-size: 36px;
     text-align: center;
-    margin-bottom: 16px;
-}
-
-.warning-modal-content h2 {
-    color: #ff6666;
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 20px;
-}
-
-.warning-text {
-    background: rgba(255, 68, 68, 0.1);
-    border: 1px solid rgba(255, 68, 68, 0.3);
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 20px;
-}
-
-.warning-text p {
-    color: #e0e0e0;
     margin-bottom: 12px;
 }
 
+.warning-modal-content h2 {
+    color: #e53935;
+    text-align: center;
+    margin-bottom: 24px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.warning-text {
+    padding: 0;
+    margin-bottom: 24px;
+}
+
+.warning-text p {
+    color: #fff;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
 .warning-text ul {
-    color: #ffaaaa;
+    color: #fff;
     padding-left: 20px;
     margin-bottom: 12px;
 }
 
 .warning-text li {
     margin-bottom: 8px;
-    line-height: 1.5;
+    line-height: 1.6;
+    font-size: 14px;
 }
 
 .warning-text strong {
-    color: #ff6666;
+    color: #e53935;
 }
 
 .warning-tip {
-    color: #88cc88 !important;
+    color: #888 !important;
     font-size: 13px;
-    margin-top: 12px;
+    margin-top: 16px;
     margin-bottom: 0 !important;
 }
 
@@ -810,28 +809,24 @@ h1 {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    padding: 12px 0;
     cursor: pointer;
     margin-bottom: 20px;
-    transition: all 0.2s ease;
 }
 
-.warning-checkbox:hover {
-    background: rgba(255, 255, 255, 0.08);
+.warning-checkbox:hover span {
+    color: #fff;
 }
 
 .warning-checkbox input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     cursor: pointer;
-    accent-color: #ff4444;
+    accent-color: #e53935;
 }
 
 .warning-checkbox span {
-    color: #e0e0e0;
+    color: #ccc;
     font-size: 14px;
 }
 
@@ -842,27 +837,28 @@ h1 {
 
 .warning-cancel-btn {
     flex: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #ccc;
-    padding: 14px 20px;
-    border-radius: 8px;
+    background: transparent;
+    border: 1px solid #444;
+    color: #aaa;
+    padding: 12px 20px;
+    border-radius: 6px;
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .warning-cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+    border-color: #666;
+    color: #fff;
 }
 
 .warning-proceed-btn {
     flex: 1;
-    background: #ff4444;
+    background: #e53935;
     border: none;
     color: white;
-    padding: 14px 20px;
-    border-radius: 8px;
+    padding: 12px 20px;
+    border-radius: 6px;
     font-size: 14px;
     font-weight: bold;
     cursor: pointer;
@@ -870,12 +866,41 @@ h1 {
 }
 
 .warning-proceed-btn:disabled {
-    background: #666;
-    color: #999;
+    background: #333;
+    color: #666;
     cursor: not-allowed;
 }
 
 .warning-proceed-btn:not(:disabled):hover {
-    background: #ff6666;
-    transform: translateY(-1px);
+    background: #f44336;
+}
+
+/* Day mode warning modal */
+body.theme-day .warning-modal {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+body.theme-day .warning-modal-content {
+    background: #fff;
+    border: 1px solid #ddd;
+}
+
+body.theme-day .warning-text p,
+body.theme-day .warning-text ul,
+body.theme-day .warning-text li {
+    color: #222;
+}
+
+body.theme-day .warning-checkbox span {
+    color: #444;
+}
+
+body.theme-day .warning-cancel-btn {
+    border-color: #ccc;
+    color: #666;
+}
+
+body.theme-day .warning-cancel-btn:hover {
+    border-color: #999;
+    color: #222;
 }
