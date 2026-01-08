@@ -728,6 +728,20 @@ async function generateMergeVideo() {
         return;
     }
 
+    // フレームカットモードの警告
+    if (frameCutMode > 0) {
+        const proceed = confirm(
+            `⚠️ フレームカットモード（${frameCutMode}F）が選択されています\n\n` +
+            `この処理には以下の注意点があります：\n\n` +
+            `• 動画の長さや本数によって数時間かかる場合があります\n` +
+            `• 処理中にブラウザが固まる・停止する場合があります\n` +
+            `• 高解像度の動画は特に時間がかかります\n\n` +
+            `それでも続行しますか？\n\n` +
+            `（高速処理したい場合は「OFF」モードをお使いください）`
+        );
+        if (!proceed) return;
+    }
+
     // 直接メインスレッド処理を実行
     await generateMergeVideoMainThread();
 }
