@@ -7,6 +7,30 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Reverse Mode Warning Modal -->
+    <div id="reverseWarningModal" class="warning-modal" style="display: none;">
+        <div class="warning-modal-content">
+            <div class="warning-icon">⚠️</div>
+            <h2>Reverseモード警告</h2>
+            <div class="warning-text">
+                <p><strong>この動画でReverseモードを使用すると問題が発生する可能性があります：</strong></p>
+                <ul>
+                    <li>高解像度・高フレームレートの動画は<strong>メモリ不足</strong>で停止する場合があります</li>
+                    <li>処理中にブラウザが<strong>固まる・クラッシュ</strong>する場合があります</li>
+                </ul>
+                <p class="warning-tip">💡 問題が起きる場合は「Forward」モードをお試しください</p>
+            </div>
+            <label class="warning-checkbox">
+                <input type="checkbox" id="reverseWarningCheck">
+                <span>上記の注意事項を理解しました</span>
+            </label>
+            <div class="warning-buttons">
+                <button id="reverseWarningCancelBtn" class="btn warning-cancel-btn">キャンセル</button>
+                <button id="reverseWarningProceedBtn" class="btn warning-proceed-btn" disabled>実行する</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Frame Cut Warning Modal -->
     <div id="frameCutWarningModal" class="warning-modal" style="display: none;">
         <div class="warning-modal-content">
@@ -43,7 +67,7 @@
 
     <div class="app">
         <header class="header">
-            <h1><span id="titlePrefix">WEBLO</span><span id="lopO">OOO</span><span id="titleSuffix">P</span><span class="version">v2.2</span></h1>
+            <h1><span id="titlePrefix">WEBLO</span><span id="lopO">OOO</span><span id="titleSuffix">P</span><span class="version">v2.4</span></h1>
             <div class="theme-switcher">
                 <button id="themeDark" class="theme-btn active">Dark</button>
                 <button id="themeDay" class="theme-btn">Day</button>
@@ -106,16 +130,6 @@
                     </div>
                 </div>
 
-                <div class="control-group">
-                    <label class="control-label">出力品質</label>
-                    <div class="quality-switcher">
-                        <button id="qualityUltra" class="quality-btn" title="最高品質（処理時間: 最長）">Ultra</button>
-                        <button id="qualityHigh" class="quality-btn active" title="高品質（処理時間: 長い）">High</button>
-                        <button id="qualityMedium" class="quality-btn" title="標準品質（処理時間: 中程度）">Medium</button>
-                        <button id="qualityFast" class="quality-btn" title="高速処理（処理時間: 短い）">Fast</button>
-                    </div>
-                </div>
-
                 <div id="totalInfo" class="total-info">
                     <span class="total-label">推定出力時間:</span>
                     <span id="totalDuration" class="total-value">-</span>
@@ -165,16 +179,6 @@
                             <button id="frameCut0" class="quality-btn active">OFF</button>
                             <button id="frameCut1" class="quality-btn">1F</button>
                             <button id="frameCut2" class="quality-btn">2F</button>
-                        </div>
-                    </div>
-
-                    <div class="control-group">
-                        <label class="control-label">出力品質</label>
-                        <div class="quality-switcher">
-                            <button id="mergeQualityUltra" class="quality-btn" title="最高品質">Ultra</button>
-                            <button id="mergeQualityHigh" class="quality-btn active" title="高品質">High</button>
-                            <button id="mergeQualityMedium" class="quality-btn" title="標準品質">Medium</button>
-                            <button id="mergeQualityFast" class="quality-btn" title="高速処理">Fast</button>
                         </div>
                     </div>
 

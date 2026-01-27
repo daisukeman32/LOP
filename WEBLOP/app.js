@@ -5,15 +5,15 @@ let ffmpeg = null;
 let ffmpegWorker = null; // Web Worker for merge
 let videoFile = null;
 let videoDuration = 0;
+let videoWidth = 0;
+let videoHeight = 0;
+let detectedFps = null;
 let outputBlob = null;
 let loopMode = 'reverse';
-let quality = 'high';
-const TARGET_FPS = 30;
 
 // Merge用変数
 let currentMode = 'loop'; // 'loop' or 'merge'
 let mergeVideos = []; // { file, duration, name }
-let mergeQuality = 'high';
 let frameCutMode = 0; // 0=OFF, 1=1フレーム, 2=2フレーム（両側）
 let mergeWorkerReady = false;
 
@@ -50,11 +50,6 @@ const elements = {
     // モード
     modeReverse: document.getElementById('modeReverse'),
     modeForward: document.getElementById('modeForward'),
-    // 品質
-    qualityUltra: document.getElementById('qualityUltra'),
-    qualityHigh: document.getElementById('qualityHigh'),
-    qualityMedium: document.getElementById('qualityMedium'),
-    qualityFast: document.getElementById('qualityFast'),
     // モードタブ
     tabLoop: document.getElementById('tabLoop'),
     tabMerge: document.getElementById('tabMerge'),
@@ -72,10 +67,6 @@ const elements = {
     frameCut0: document.getElementById('frameCut0'),
     frameCut1: document.getElementById('frameCut1'),
     frameCut2: document.getElementById('frameCut2'),
-    mergeQualityUltra: document.getElementById('mergeQualityUltra'),
-    mergeQualityHigh: document.getElementById('mergeQualityHigh'),
-    mergeQualityMedium: document.getElementById('mergeQualityMedium'),
-    mergeQualityFast: document.getElementById('mergeQualityFast'),
     mergeTotalDuration: document.getElementById('mergeTotalDuration'),
     mergeOutputSection: document.getElementById('mergeOutputSection'),
     mergeGenerateBtn: document.getElementById('mergeGenerateBtn'),
@@ -174,12 +165,12 @@ async function initFFmpeg() {
         log: true,
         progress: ({ ratio }) => {
             // マージモードの場合、進捗を20-70%にスケール（読込20%、FFmpeg50%、後処理30%）
-            // ループモードの場合、進捗を5-80%にスケール（読込5%、FFmpeg75%、後処理20%）
+            // ループモードの場合、進捗を30-80%にスケール（読込30%、FFmpeg50%、後処理20%）
             let percent;
             if (currentProcessMode === 'merge') {
                 percent = Math.round(20 + ratio * 50); // 20% ~ 70%
             } else {
-                percent = Math.round(5 + ratio * 75); // 5% ~ 80%
+                percent = Math.round(30 + ratio * 50); // 30% ~ 80%
             }
             updateProgress(percent);
         }
@@ -315,6 +306,8 @@ async function handleVideoFile(file) {
 
     elements.previewVideo.onloadedmetadata = () => {
         videoDuration = elements.previewVideo.duration;
+        videoWidth = elements.previewVideo.videoWidth;
+        videoHeight = elements.previewVideo.videoHeight;
         elements.fileName.textContent = file.name;
         elements.videoDuration.textContent = formatDuration(videoDuration);
         elements.fileSize.textContent = formatFileSize(file.size);
@@ -391,8 +384,11 @@ async function checkVideoWarnings(file, video) {
     const warnings = [];
     const notices = [];
 
-    // 常にfps制限を適用する旨を表示
-    notices.push(`動画は${TARGET_FPS}fpsに自動変換されます（メモリ最適化）`);
+    // 解像度を取得
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    const resolution = `${width}x${height}`;
+    notices.push(`解像度: ${resolution}`);
 
     // 長さ警告（10秒以上）
     if (video.duration > 10) {
@@ -400,15 +396,32 @@ async function checkVideoWarnings(file, video) {
     }
 
     // フレームレート検出を試みる
+    detectedFps = null;
     try {
         const fps = await estimateFrameRate(video);
-        if (fps && fps > 60) {
-            warnings.push(`高フレームレート動画 (${fps}fps) - 処理が非常に遅くなるか停止する可能性があります。事前に60fps以下に変換することを推奨します`);
-        } else if (fps) {
+        if (fps) {
+            detectedFps = fps;
             notices.push(`検出されたフレームレート: ${fps}fps`);
+
+            // 高解像度 + 高フレームレートの組み合わせ警告
+            const isHighRes = height >= 1080 || width >= 1920;
+            const isHighFps = fps >= 50;
+            const isVeryHighFps = fps > 60;
+
+            if (isVeryHighFps) {
+                warnings.push(`超高フレームレート (${fps}fps) - 処理が非常に遅くなるか停止する可能性があります。事前に60fps以下に変換することを推奨します`);
+            } else if (isHighRes && isHighFps) {
+                warnings.push(`高解像度(${resolution}) + 高フレームレート(${fps}fps) - Reverseモードでメモリ不足になる可能性があります。Forwardモードを推奨します`);
+            }
         }
     } catch (e) {
         console.log('FPS detection failed:', e);
+    }
+
+    // 解像度のみの警告（フレームレート検出失敗時のフォールバック）
+    const isHighResOnly = height >= 1080 || width >= 1920;
+    if (isHighResOnly && warnings.length === 0) {
+        notices.push(`高解像度動画です。Reverseモードでメモリ不足になる場合はForwardモードをお試しください`);
     }
 
     // メッセージ構築
@@ -457,9 +470,65 @@ function updateProgress(percent) {
     elements.progressText.textContent = `${percent}%`;
 }
 
+// Reverseモードのリスク判定
+function isRiskyReverse() {
+    if (loopMode !== 'reverse') return false;
+    const isHighRes = videoHeight >= 1080 || videoWidth >= 1920;
+    const isHighFps = detectedFps && detectedFps >= 50;
+    // 高解像度 or 高FPS のいずれかに該当すれば警告
+    return isHighRes || isHighFps;
+}
+
+// Reverseモード警告モーダル
+function showReverseWarning() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('reverseWarningModal');
+        const checkbox = document.getElementById('reverseWarningCheck');
+        const proceedBtn = document.getElementById('reverseWarningProceedBtn');
+        const cancelBtn = document.getElementById('reverseWarningCancelBtn');
+
+        checkbox.checked = false;
+        proceedBtn.disabled = true;
+
+        modal.style.display = 'flex';
+
+        const onCheckChange = () => {
+            proceedBtn.disabled = !checkbox.checked;
+        };
+
+        const onProceed = () => {
+            cleanup();
+            modal.style.display = 'none';
+            resolve(true);
+        };
+
+        const onCancel = () => {
+            cleanup();
+            modal.style.display = 'none';
+            resolve(false);
+        };
+
+        const cleanup = () => {
+            checkbox.removeEventListener('change', onCheckChange);
+            proceedBtn.removeEventListener('click', onProceed);
+            cancelBtn.removeEventListener('click', onCancel);
+        };
+
+        checkbox.addEventListener('change', onCheckChange);
+        proceedBtn.addEventListener('click', onProceed);
+        cancelBtn.addEventListener('click', onCancel);
+    });
+}
+
 // ループ動画生成
 async function generateLoopVideo() {
     if (!ffmpeg || !videoFile) return;
+
+    // Reverseモード + 高リスク動画の場合、警告モーダルを表示
+    if (isRiskyReverse()) {
+        const proceed = await showReverseWarning();
+        if (!proceed) return;
+    }
 
     const loopCount = parseInt(elements.loopCount.value) || 3;
 
@@ -476,80 +545,93 @@ async function generateLoopVideo() {
 
     try {
         ffmpeg.FS('writeFile', 'input.mp4', await window.ffmpegFetchFile(videoFile));
-        updateProgress(5);
+        updateProgress(30);
 
         elements.progressFill.classList.remove('pulsing');
         startProgressLabelAnimation('ループ動画を生成中');
 
-        const qualitySettings = {
-            ultra: { crf: '18', preset: 'slow' },
-            high: { crf: '23', preset: 'medium' },
-            medium: { crf: '28', preset: 'fast' },
-            fast: { crf: '32', preset: 'ultrafast' }
-        };
-        const { crf, preset } = qualitySettings[quality];
+        // ストリーム連結モードで高速処理
+        console.log('Mode:', loopMode, 'Loops:', loopCount, 'Using stream concat');
 
-        // 常にfps制限を適用（メモリ最適化）
-        const fpsFilter = `fps=${TARGET_FPS},`;
-        console.log('Applying fps filter:', fpsFilter, 'Mode:', loopMode, 'Loops:', loopCount);
+        // list.txt用の変数（ブロックスコープ対策）
+        let fileListContent = '';
 
+        // Reverseモード: forward.mp4とreverse.mp4を同一コーデックで作成
         if (loopMode === 'reverse') {
-            // Reverseモード: filter_complexを使用
-            let filterParts = [];
-            let concatInputs = '';
+            console.log('Creating normalized forward and reversed videos...');
 
-            // 最初のループ: 完全な forward + reverse（最初のフレーム除去してPTSリセット）
-            filterParts.push(`[0:v]${fpsFilter}copy[forward0]`);
-            filterParts.push(`[0:v]${fpsFilter}reverse,trim=start_frame=1,setpts=PTS-STARTPTS[reverse0]`);
-            concatInputs += '[forward0][reverse0]';
+            // Step 1: 入力をH.264に正規化（HEVCなど異なるコーデックでも安全に結合するため）
+            await ffmpeg.run(
+                '-i', 'input.mp4',
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-an',
+                '-movflags', '+faststart',
+                'forward.mp4'
+            );
+            updateProgress(15);
 
-            // 2回目以降: 最初のフレームを除去してPTSリセット
-            for (let i = 1; i < loopCount; i++) {
-                filterParts.push(`[0:v]${fpsFilter}trim=start_frame=1,setpts=PTS-STARTPTS[forward${i}]`);
-                filterParts.push(`[0:v]${fpsFilter}reverse,trim=start_frame=1,setpts=PTS-STARTPTS[reverse${i}]`);
-                concatInputs += `[forward${i}][reverse${i}]`;
+            // Step 2: 正規化済みforward.mp4から逆再生版を作成（同一コーデックパラメータを保証）
+            await ffmpeg.run(
+                '-i', 'forward.mp4',
+                '-vf', 'reverse',
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-an',
+                '-movflags', '+faststart',
+                'reverse.mp4'
+            );
+            updateProgress(25);
+
+            // list.txtを生成: forward, reverse を交互にloop回繰り返し
+            for (let i = 0; i < loopCount; i++) {
+                fileListContent += "file 'forward.mp4'\n";
+                fileListContent += "file 'reverse.mp4'\n";
             }
-
-            const concatCount = loopCount * 2;
-            filterParts.push(`${concatInputs}concat=n=${concatCount}:v=1:a=0[output]`);
-            const filterComplex = filterParts.join(';');
-
-            console.log('Filter complex:', filterComplex);
-
-            await ffmpeg.run(
-                '-i', 'input.mp4',
-                '-filter_complex', filterComplex,
-                '-map', '[output]',
-                '-c:v', 'libx264',
-                '-preset', preset,
-                '-crf', crf,
-                '-pix_fmt', 'yuv420p',
-                '-movflags', '+faststart',
-                'output.mp4'
-            );
         } else {
-            // Forwardモード: -stream_loopを使用（メモリ効率が良い）
-            console.log('Using stream_loop for Forward mode');
-
-            await ffmpeg.run(
-                '-stream_loop', String(loopCount - 1),
-                '-i', 'input.mp4',
-                '-vf', `fps=${TARGET_FPS}`,
-                '-c:v', 'libx264',
-                '-preset', preset,
-                '-crf', crf,
-                '-pix_fmt', 'yuv420p',
-                '-movflags', '+faststart',
-                'output.mp4'
-            );
+            // Forwardモード: list.txtを生成: 元、元、元...（loop回繰り返し）
+            for (let i = 0; i < loopCount; i++) {
+                fileListContent += "file 'input.mp4'\n";
+            }
         }
 
+        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
+        console.log('File list created:', fileListContent);
+        updateProgress(30);
+
+        // concat demuxerで連結（完全ストリーム連結）
+        await ffmpeg.run(
+            '-f', 'concat',
+            '-i', 'filelist.txt',
+            '-c', 'copy',
+            '-movflags', '+faststart',
+            'output.mp4'
+        );
+
+        console.log('FFmpeg completed');
+
         startProgressLabelAnimation('出力ファイルを準備中');
-        // 80%から90%まで滑らかにアニメーション
-        startProgressAnimation(80, 90, 2000);
+        // FFmpeg完了後、80%から95%まで滑らかにアニメーション
+        startProgressAnimation(80, 95, 2000);
 
-        const outputData = ffmpeg.FS('readFile', 'output.mp4');
+        // 出力ファイルの存在とサイズをチェック
+        let outputData;
+        try {
+            outputData = ffmpeg.FS('readFile', 'output.mp4');
+            if (!outputData || outputData.length === 0) {
+                throw new Error('出力ファイルが空です。動画の結合に失敗しました。');
+            }
+            console.log('Output file size:', outputData.length, 'bytes');
+        } catch (readError) {
+            console.error('Failed to read output file:', readError);
+            throw new Error('出力ファイルの読み込みに失敗しました。FFmpegでエラーが発生した可能性があります。');
+        }
 
+        // ファイル読み込み完了、アニメーション停止
         stopProgressAnimation();
         updateProgress(95);
 
@@ -562,14 +644,20 @@ async function generateLoopVideo() {
         // 95%から100%まで滑らかにアニメーション
         startProgressAnimation(95, 100, 400);
 
+        // クリーンアップ
+        ffmpeg.FS('unlink', 'input.mp4');
+        ffmpeg.FS('unlink', 'output.mp4');
+        if (loopMode === 'reverse') {
+            try { ffmpeg.FS('unlink', 'forward.mp4'); } catch(e) {}
+            try { ffmpeg.FS('unlink', 'reverse.mp4'); } catch(e) {}
+        }
+        try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+
         // 少し待ってから完了表示（アニメーションが見えるように）
         await new Promise(resolve => setTimeout(resolve, 600));
 
         elements.progress.style.display = 'none';
         elements.resultSection.style.display = 'block';
-
-        ffmpeg.FS('unlink', 'input.mp4');
-        ffmpeg.FS('unlink', 'output.mp4');
 
     } catch (error) {
         console.error('Generation error:', error);
@@ -932,55 +1020,27 @@ async function generateMergeVideoMainThread() {
         updateProgress(20);
         startProgressLabelAnimation('動画を結合中');
 
-        // 品質設定
-        const qualitySettings = {
-            ultra: { crf: '18', preset: 'slow' },
-            high: { crf: '23', preset: 'medium' },
-            medium: { crf: '28', preset: 'fast' },
-            fast: { crf: '32', preset: 'ultrafast' }
-        };
-        const { crf, preset } = qualitySettings[mergeQuality];
-
-        // シンプルなconcat方式を使用（filter_complexではなくconcat demuxer）
-        // まずファイルリストを作成
-        let fileListContent = '';
-        for (let i = 0; i < mergeVideos.length; i++) {
-            fileListContent += `file 'input${i}.mp4'\n`;
-        }
-        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
-        console.log('File list created:', fileListContent);
-
         console.log('Running FFmpeg...');
         console.log('Frame cut mode:', frameCutMode);
 
         if (frameCutMode === 0) {
-            // フレームカットなし → コピーモード
-            // 各動画を個別にTS形式に変換してから結合（タイムスタンプ互換性のため）
-            // 先にTS形式に変換
+            // フレームカットなし → concat demuxerで完全ストリーム連結
+            // ファイルリストを作成（入力の順番通り）
+            let fileListContent = '';
             for (let i = 0; i < mergeVideos.length; i++) {
-                await ffmpeg.run(
-                    '-i', `input${i}.mp4`,
-                    '-c', 'copy',
-                    '-bsf:v', 'h264_mp4toannexb',
-                    '-f', 'mpegts',
-                    `input${i}.ts`
-                );
+                fileListContent += `file 'input${i}.mp4'\n`;
             }
+            ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
+            console.log('File list created:', fileListContent);
 
-            // TSファイルをconcatプロトコルで結合
-            const tsFiles = mergeVideos.map((_, i) => `input${i}.ts`).join('|');
+            // concat demuxerで連結（完全ストリーム連結）
             await ffmpeg.run(
-                '-i', `concat:${tsFiles}`,
+                '-f', 'concat',
+                '-i', 'filelist.txt',
                 '-c', 'copy',
-                '-bsf:a', 'aac_adtstoasc',
                 '-movflags', '+faststart',
                 'output.mp4'
             );
-
-            // TSファイルをクリーンアップ
-            for (let i = 0; i < mergeVideos.length; i++) {
-                try { ffmpeg.FS('unlink', `input${i}.ts`); } catch(e) {}
-            }
         } else {
             // フレームカットあり → filter_complex使用（再エンコード）
             let filterParts = [];
@@ -1023,8 +1083,8 @@ async function generateMergeVideoMainThread() {
                 '-filter_complex', filterComplex,
                 '-map', '[output]',
                 '-c:v', 'libx264',
-                '-preset', preset,
-                '-crf', crf,
+                '-preset', 'medium',
+                '-crf', '23',
                 '-vsync', 'vfr',
                 '-threads', '1',
                 '-movflags', '+faststart',
@@ -1212,39 +1272,6 @@ function setupEventListeners() {
         updateEstimatedDuration();
     });
 
-    // 品質
-    elements.qualityUltra.addEventListener('click', () => {
-        quality = 'ultra';
-        elements.qualityUltra.classList.add('active');
-        elements.qualityHigh.classList.remove('active');
-        elements.qualityMedium.classList.remove('active');
-        elements.qualityFast.classList.remove('active');
-    });
-
-    elements.qualityHigh.addEventListener('click', () => {
-        quality = 'high';
-        elements.qualityHigh.classList.add('active');
-        elements.qualityUltra.classList.remove('active');
-        elements.qualityMedium.classList.remove('active');
-        elements.qualityFast.classList.remove('active');
-    });
-
-    elements.qualityMedium.addEventListener('click', () => {
-        quality = 'medium';
-        elements.qualityMedium.classList.add('active');
-        elements.qualityUltra.classList.remove('active');
-        elements.qualityHigh.classList.remove('active');
-        elements.qualityFast.classList.remove('active');
-    });
-
-    elements.qualityFast.addEventListener('click', () => {
-        quality = 'fast';
-        elements.qualityFast.classList.add('active');
-        elements.qualityUltra.classList.remove('active');
-        elements.qualityHigh.classList.remove('active');
-        elements.qualityMedium.classList.remove('active');
-    });
-
     // テーマ
     elements.themeDark.addEventListener('click', () => setTheme('dark'));
     elements.themeDay.addEventListener('click', () => setTheme('day'));
@@ -1327,42 +1354,6 @@ function setupEventListeners() {
         updateMergeNote();
     });
 
-    // 初期表示
-    updateMergeNote();
-
-    // Merge品質
-    elements.mergeQualityUltra.addEventListener('click', () => {
-        mergeQuality = 'ultra';
-        elements.mergeQualityUltra.classList.add('active');
-        elements.mergeQualityHigh.classList.remove('active');
-        elements.mergeQualityMedium.classList.remove('active');
-        elements.mergeQualityFast.classList.remove('active');
-    });
-
-    elements.mergeQualityHigh.addEventListener('click', () => {
-        mergeQuality = 'high';
-        elements.mergeQualityHigh.classList.add('active');
-        elements.mergeQualityUltra.classList.remove('active');
-        elements.mergeQualityMedium.classList.remove('active');
-        elements.mergeQualityFast.classList.remove('active');
-    });
-
-    elements.mergeQualityMedium.addEventListener('click', () => {
-        mergeQuality = 'medium';
-        elements.mergeQualityMedium.classList.add('active');
-        elements.mergeQualityUltra.classList.remove('active');
-        elements.mergeQualityHigh.classList.remove('active');
-        elements.mergeQualityFast.classList.remove('active');
-    });
-
-    elements.mergeQualityFast.addEventListener('click', () => {
-        mergeQuality = 'fast';
-        elements.mergeQualityFast.classList.add('active');
-        elements.mergeQualityUltra.classList.remove('active');
-        elements.mergeQualityHigh.classList.remove('active');
-        elements.mergeQualityMedium.classList.remove('active');
-    });
-
     // Merge生成
     elements.mergeGenerateBtn.addEventListener('click', generateMergeVideo);
 }
@@ -1370,6 +1361,7 @@ function setupEventListeners() {
 // 初期化
 async function init() {
     setupEventListeners();
+    updateMergeNote();
     await initFFmpeg();
 }
 
