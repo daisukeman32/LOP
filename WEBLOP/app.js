@@ -1342,7 +1342,7 @@ function setupEventListeners() {
             elements.frameCutOff.classList.add('active');
             elements.frameCutOn.classList.remove('active');
             if (elements.frameCutHint) {
-                elements.frameCutHint.textContent = 'OFF: 高速処理（60FPS対応）';
+                elements.frameCutHint.innerHTML = 'OFF: 高速処理<br>（60FPS対応）';
             }
         });
     }
@@ -1353,7 +1353,7 @@ function setupEventListeners() {
             elements.frameCutOn.classList.add('active');
             elements.frameCutOff.classList.remove('active');
             if (elements.frameCutHint) {
-                elements.frameCutHint.textContent = 'ON: 滑らかループ（高FPSは警告）';
+                elements.frameCutHint.innerHTML = 'ON: 滑らかループ<br>（高FPSは警告）';
             }
         });
     }
