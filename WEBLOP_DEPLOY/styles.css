@@ -496,6 +496,16 @@ h1 {
     color: white;
 }
 
+/* フレームカットヒント */
+.frame-cut-hint {
+    margin-top: 10px;
+    padding-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+    clear: both;
+}
+
 /* 品質選択スイッチ */
 .quality-switcher {
     display: flex;

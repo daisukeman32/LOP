@@ -1,30 +1,60 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## プロジェクト概要
 
-## Project Overview
+**WEBLOP** - Web版ループ動画作成ツール（Netlifyデプロイ用）
 
-This appears to be a new/empty project directory named "るーぷつくーる" (Loop Tool). No source code or project files have been identified yet.
+FFmpeg.wasmを使用してブラウザ上で動画のループ処理を行う。
 
-## Development Commands
+**重要：Electron版（main.js, renderer.js等）は使用しない。WEBLOPのみ。**
 
-No specific build, test, or development commands have been identified since no project files exist yet.
+## ファイル構成
 
-## Code Architecture
+```
+WEBLOP/          → 開発用
+WEBLOP_DEPLOY/   → Netlifyデプロイ用（本番）
+```
 
-No code architecture has been established yet as this directory currently only contains configuration files.
+※ルート直下のmain.js, renderer.js, index.html等はElectron版の残骸。触らない。
 
-## Important Notes
+## 開発コマンド
 
-- This is currently an empty project directory
-- No package managers, build tools, or frameworks have been identified
-- Future instances should analyze the actual codebase once project files are added
-- The directory name suggests this may be a tool or application related to loops ("ループツール" in Japanese)
+```bash
+cd WEBLOP
+npm start
+# http://localhost:3000
+```
 
-## Next Steps
+## Reverseモードの仕様
 
-When project files are added:
-1. Identify the technology stack and framework being used
-2. Update this file with relevant build/test commands
-3. Document the project architecture and file structure
-4. Add any project-specific coding conventions or patterns
+### パターン
+
+| モード | パターン | 処理 | 高FPS対応 |
+|-------|---------|------|----------|
+| フレームカットなし | 123455432 | concat demuxer (-c copy) | OK |
+| フレームカットあり | 12345432 | filter_complex (再エンコード) | NG（アラート） |
+
+### フレームカットなし（123455432）
+- forward + reverse をそのまま連結
+- 端フレームが2回出る（5が2回、1が2回）
+- concat demuxer + `-c copy` で連結時再エンコード不要
+- 60FPS以上でも処理可能
+
+### フレームカットあり（12345432）
+- trim=start_frame=1 で端フレームを除去
+- 滑らかなループ（端フレーム重複なし）
+- filter_complex必須、再エンコード発生
+- 高FPS/高解像度でメモリ問題 → アラート表示
+
+## 技術仕様
+
+- FFmpeg.wasm 0.12.x
+- concat demuxer方式（v2.4〜）
+- 対応形式：MP4, WebM, MOV, AVI
+- 出力：MP4 (H.264)
+
+## 今後の予定
+
+- Reverseモードにフレームカット有無のトグルスイッチ追加
+- フレームカットなし→アラートなし
+- フレームカットあり→アラートあり（現状維持）

@@ -10,6 +10,7 @@ let videoHeight = 0;
 let detectedFps = null;
 let outputBlob = null;
 let loopMode = 'reverse';
+let loopFrameCut = false; // false=OFF（高速）, true=ON（滑らかループ）
 
 // Merge用変数
 let currentMode = 'loop'; // 'loop' or 'merge'
@@ -50,6 +51,11 @@ const elements = {
     // モード
     modeReverse: document.getElementById('modeReverse'),
     modeForward: document.getElementById('modeForward'),
+    // フレームカット（Loop用）
+    frameCutGroup: document.getElementById('frameCutGroup'),
+    frameCutOff: document.getElementById('frameCutOff'),
+    frameCutOn: document.getElementById('frameCutOn'),
+    frameCutHint: document.getElementById('frameCutHint'),
     // モードタブ
     tabLoop: document.getElementById('tabLoop'),
     tabMerge: document.getElementById('tabMerge'),
@@ -473,9 +479,11 @@ function updateProgress(percent) {
 // Reverseモードのリスク判定
 function isRiskyReverse() {
     if (loopMode !== 'reverse') return false;
+    // フレームカットOFFなら警告不要（concat demuxer方式で高速処理）
+    if (!loopFrameCut) return false;
+    // フレームカットONの場合のみ、高解像度/高FPSで警告
     const isHighRes = videoHeight >= 1080 || videoWidth >= 1920;
     const isHighFps = detectedFps && detectedFps >= 50;
-    // 高解像度 or 高FPS のいずれかに該当すれば警告
     return isHighRes || isHighFps;
 }
 
@@ -550,67 +558,110 @@ async function generateLoopVideo() {
         elements.progressFill.classList.remove('pulsing');
         startProgressLabelAnimation('ループ動画を生成中');
 
-        // ストリーム連結モードで高速処理
-        console.log('Mode:', loopMode, 'Loops:', loopCount, 'Using stream concat');
+        console.log('Mode:', loopMode, 'FrameCut:', loopFrameCut, 'Loops:', loopCount);
 
-        // list.txt用の変数（ブロックスコープ対策）
-        let fileListContent = '';
+        // Reverseモード + フレームカットON: filter_complex方式（12345432パターン）
+        if (loopMode === 'reverse' && loopFrameCut) {
+            console.log('Using filter_complex mode (frame cut ON)');
 
-        // Reverseモード: forward.mp4とreverse.mp4を同一コーデックで作成
-        if (loopMode === 'reverse') {
-            console.log('Creating normalized forward and reversed videos...');
+            // filter_complexを構築
+            let filterParts = [];
+            let concatInputs = '';
 
-            // Step 1: 入力をH.264に正規化（HEVCなど異なるコーデックでも安全に結合するため）
+            // 最初のループ: 完全な forward + reverse（最後のフレーム除去）
+            filterParts.push(`[0:v]copy[forward0]`);
+            filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse0]`);
+            concatInputs += `[forward0][reverse0]`;
+
+            // 2回目以降: 最初と最後のフレームを除去
+            for (let i = 1; i < loopCount; i++) {
+                filterParts.push(`[0:v]trim=start_frame=1,setpts=PTS-STARTPTS[forward${i}]`);
+                filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse${i}]`);
+                concatInputs += `[forward${i}][reverse${i}]`;
+            }
+
+            filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+            const filterComplex = filterParts.join(';');
+            console.log('Filter complex:', filterComplex);
+
+            updateProgress(10);
+
             await ffmpeg.run(
                 '-i', 'input.mp4',
+                '-filter_complex', filterComplex,
+                '-map', '[output]',
                 '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '23',
                 '-pix_fmt', 'yuv420p',
                 '-an',
                 '-movflags', '+faststart',
-                'forward.mp4'
+                'output.mp4'
             );
-            updateProgress(15);
 
-            // Step 2: 正規化済みforward.mp4から逆再生版を作成（同一コーデックパラメータを保証）
-            await ffmpeg.run(
-                '-i', 'forward.mp4',
-                '-vf', 'reverse',
-                '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-crf', '23',
-                '-pix_fmt', 'yuv420p',
-                '-an',
-                '-movflags', '+faststart',
-                'reverse.mp4'
-            );
-            updateProgress(25);
-
-            // list.txtを生成: forward, reverse を交互にloop回繰り返し
-            for (let i = 0; i < loopCount; i++) {
-                fileListContent += "file 'forward.mp4'\n";
-                fileListContent += "file 'reverse.mp4'\n";
-            }
         } else {
-            // Forwardモード: list.txtを生成: 元、元、元...（loop回繰り返し）
-            for (let i = 0; i < loopCount; i++) {
-                fileListContent += "file 'input.mp4'\n";
+            // concat demuxer方式（高速処理）
+            console.log('Using concat demuxer mode (fast)');
+
+            // list.txt用の変数
+            let fileListContent = '';
+
+            // Reverseモード（フレームカットOFF）: forward.mp4とreverse.mp4を作成
+            if (loopMode === 'reverse') {
+                console.log('Creating normalized forward and reversed videos...');
+
+                // Step 1: 入力をH.264に正規化
+                await ffmpeg.run(
+                    '-i', 'input.mp4',
+                    '-c:v', 'libx264',
+                    '-preset', 'medium',
+                    '-crf', '23',
+                    '-pix_fmt', 'yuv420p',
+                    '-an',
+                    '-movflags', '+faststart',
+                    'forward.mp4'
+                );
+                updateProgress(15);
+
+                // Step 2: 逆再生版を作成
+                await ffmpeg.run(
+                    '-i', 'forward.mp4',
+                    '-vf', 'reverse',
+                    '-c:v', 'libx264',
+                    '-preset', 'medium',
+                    '-crf', '23',
+                    '-pix_fmt', 'yuv420p',
+                    '-an',
+                    '-movflags', '+faststart',
+                    'reverse.mp4'
+                );
+                updateProgress(25);
+
+                // list.txtを生成: forward, reverse を交互に
+                for (let i = 0; i < loopCount; i++) {
+                    fileListContent += "file 'forward.mp4'\n";
+                    fileListContent += "file 'reverse.mp4'\n";
+                }
+            } else {
+                // Forwardモード: 元動画をそのまま連結
+                for (let i = 0; i < loopCount; i++) {
+                    fileListContent += "file 'input.mp4'\n";
+                }
             }
+
+            ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
+            console.log('File list created:', fileListContent);
+            updateProgress(30);
+
+            // concat demuxerで連結
+            await ffmpeg.run(
+                '-f', 'concat',
+                '-i', 'filelist.txt',
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                'output.mp4'
+            );
         }
-
-        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
-        console.log('File list created:', fileListContent);
-        updateProgress(30);
-
-        // concat demuxerで連結（完全ストリーム連結）
-        await ffmpeg.run(
-            '-f', 'concat',
-            '-i', 'filelist.txt',
-            '-c', 'copy',
-            '-movflags', '+faststart',
-            'output.mp4'
-        );
 
         console.log('FFmpeg completed');
 
@@ -647,11 +698,15 @@ async function generateLoopVideo() {
         // クリーンアップ
         ffmpeg.FS('unlink', 'input.mp4');
         ffmpeg.FS('unlink', 'output.mp4');
-        if (loopMode === 'reverse') {
+        // concat demuxer方式（フレームカットOFF）の場合のみ中間ファイルを削除
+        if (loopMode === 'reverse' && !loopFrameCut) {
             try { ffmpeg.FS('unlink', 'forward.mp4'); } catch(e) {}
             try { ffmpeg.FS('unlink', 'reverse.mp4'); } catch(e) {}
+            try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
         }
-        try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+        if (loopMode === 'forward') {
+            try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+        }
 
         // 少し待ってから完了表示（アニメーションが見えるように）
         await new Promise(resolve => setTimeout(resolve, 600));
@@ -1262,6 +1317,10 @@ function setupEventListeners() {
         loopMode = 'reverse';
         elements.modeReverse.classList.add('active');
         elements.modeForward.classList.remove('active');
+        // Reverseモード時はフレームカットUIを表示
+        if (elements.frameCutGroup) {
+            elements.frameCutGroup.style.display = 'block';
+        }
         updateEstimatedDuration();
     });
 
@@ -1269,8 +1328,35 @@ function setupEventListeners() {
         loopMode = 'forward';
         elements.modeForward.classList.add('active');
         elements.modeReverse.classList.remove('active');
+        // Forwardモード時はフレームカットUIを非表示
+        if (elements.frameCutGroup) {
+            elements.frameCutGroup.style.display = 'none';
+        }
         updateEstimatedDuration();
     });
+
+    // フレームカット（Loop用）
+    if (elements.frameCutOff) {
+        elements.frameCutOff.addEventListener('click', () => {
+            loopFrameCut = false;
+            elements.frameCutOff.classList.add('active');
+            elements.frameCutOn.classList.remove('active');
+            if (elements.frameCutHint) {
+                elements.frameCutHint.textContent = 'OFF: 高速処理（60FPS対応）';
+            }
+        });
+    }
+
+    if (elements.frameCutOn) {
+        elements.frameCutOn.addEventListener('click', () => {
+            loopFrameCut = true;
+            elements.frameCutOn.classList.add('active');
+            elements.frameCutOff.classList.remove('active');
+            if (elements.frameCutHint) {
+                elements.frameCutHint.textContent = 'ON: 滑らかループ（高FPSは警告）';
+            }
+        });
+    }
 
     // テーマ
     elements.themeDark.addEventListener('click', () => setTheme('dark'));
