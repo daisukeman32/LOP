@@ -12,13 +12,6 @@ let outputBlob = null;
 let loopMode = 'reverse';
 let loopFrameCut = false; // false=OFF（高速）, true=ON（滑らかループ）
 
-// Batch Loop用変数
-let batchLoopVideos = []; // { file, name, duration, width, height, loopCount, loopMode, frameCut }
-let batchOutputBlobs = []; // { blob, name }
-let isBatchMode = false;
-let batchProgressStart = 0;
-let batchProgressEnd = 100;
-
 // Merge用変数
 let currentMode = 'loop'; // 'loop' or 'merge'
 let mergeVideos = []; // { file, duration, name }
@@ -83,12 +76,7 @@ const elements = {
     mergeTotalDuration: document.getElementById('mergeTotalDuration'),
     mergeOutputSection: document.getElementById('mergeOutputSection'),
     mergeGenerateBtn: document.getElementById('mergeGenerateBtn'),
-    mergeNote: document.getElementById('mergeNote'),
-    // Batch Loop用
-    batchVideoList: document.getElementById('batchVideoList'),
-    batchVideos: document.getElementById('batchVideos'),
-    batchVideoCount: document.getElementById('batchVideoCount'),
-    addMoreLoopBtn: document.getElementById('addMoreLoopBtn')
+    mergeNote: document.getElementById('mergeNote')
 };
 
 // マージ注釈を更新
@@ -182,11 +170,10 @@ async function initFFmpeg() {
     ffmpeg = createFFmpeg({
         log: true,
         progress: ({ ratio }) => {
+            // マージモードの場合、進捗を20-70%にスケール（読込20%、FFmpeg50%、後処理30%）
+            // ループモードの場合、進捗を30-80%にスケール（読込30%、FFmpeg50%、後処理20%）
             let percent;
-            if (isBatchMode) {
-                // バッチモード: per-videoレンジにスケーリング
-                percent = Math.round(batchProgressStart + ratio * (batchProgressEnd - batchProgressStart));
-            } else if (currentProcessMode === 'merge') {
+            if (currentProcessMode === 'merge') {
                 percent = Math.round(20 + ratio * 50); // 20% ~ 70%
             } else {
                 percent = Math.round(30 + ratio * 50); // 30% ~ 80%
@@ -311,39 +298,13 @@ function formatDuration(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// 動画ファイル処理（dispatch）
-async function handleVideoFile(files) {
-    // FileList, File, Array いずれにも対応
-    let fileArray;
-    if (files instanceof FileList) {
-        fileArray = Array.from(files);
-    } else if (files instanceof File) {
-        fileArray = [files];
-    } else {
-        fileArray = Array.from(files);
-    }
-    const videoFiles = fileArray.filter(f => f && f.type.startsWith('video/'));
-
-    if (videoFiles.length === 0) {
+// 動画ファイル処理
+async function handleVideoFile(file) {
+    if (!file || !file.type.startsWith('video/')) {
         alert('動画ファイルを選択してください');
         return;
     }
 
-    // バッチモード中なら追加
-    if (batchLoopVideos.length > 0) {
-        await handleBatchVideoFiles(videoFiles);
-        return;
-    }
-
-    if (videoFiles.length === 1) {
-        await handleSingleVideoFile(videoFiles[0]);
-    } else {
-        await handleBatchVideoFiles(videoFiles);
-    }
-}
-
-// 単一動画ファイル処理（既存ロジック）
-async function handleSingleVideoFile(file) {
     videoFile = file;
 
     const url = URL.createObjectURL(file);
@@ -369,465 +330,7 @@ async function handleSingleVideoFile(file) {
     elements.controlsSection.style.display = 'flex';
     elements.outputSection.style.display = 'block';
     elements.resultSection.style.display = 'none';
-    elements.batchVideoList.style.display = 'none';
 }
-
-// ===== BATCH LOOP FUNCTIONS =====
-
-// 複数動画をバッチリストに追加
-async function handleBatchVideoFiles(videoFiles) {
-    // 単一モードの状態をクリーンアップ
-    if (videoFile) {
-        videoFile = null;
-        videoDuration = 0;
-        elements.previewVideo.src = '';
-    }
-
-    const defaultLoopCount = parseInt(elements.loopCount.value) || 3;
-    const defaultLoopMode = loopMode;
-    const defaultFrameCut = loopFrameCut;
-
-    for (const file of videoFiles) {
-        const metadata = await getVideoMetadata(file);
-        batchLoopVideos.push({
-            file,
-            name: file.name,
-            duration: metadata.duration,
-            width: metadata.width,
-            height: metadata.height,
-            loopCount: defaultLoopCount,
-            loopMode: defaultLoopMode,
-            frameCut: defaultFrameCut
-        });
-    }
-
-    // バッチUI表示
-    elements.inputSection.style.display = 'none';
-    elements.videoInfo.style.display = 'none';
-    elements.controlsSection.style.display = 'none';
-    elements.batchVideoList.style.display = 'block';
-    elements.outputSection.style.display = 'block';
-    elements.resultSection.style.display = 'none';
-
-    updateBatchVideoList();
-}
-
-// バッチ推定時間計算
-function calcBatchEstDuration(v) {
-    if (!v.duration) return '-';
-    const estimated = v.loopMode === 'reverse'
-        ? v.duration * v.loopCount * 2
-        : v.duration * v.loopCount;
-    return formatDuration(estimated);
-}
-
-function calcBatchTotalDuration() {
-    const total = batchLoopVideos.reduce((sum, v) => {
-        return sum + (v.loopMode === 'reverse'
-            ? v.duration * v.loopCount * 2
-            : v.duration * v.loopCount);
-    }, 0);
-    return formatDuration(total);
-}
-
-function updateBatchEstDurations() {
-    batchLoopVideos.forEach((v, i) => {
-        const el = document.getElementById(`batchEst${i}`);
-        if (el) el.textContent = calcBatchEstDuration(v);
-    });
-    const totalEl = document.getElementById('batchTotalDuration');
-    if (totalEl) totalEl.textContent = calcBatchTotalDuration();
-}
-
-// バッチ動画リスト描画
-function updateBatchVideoList() {
-    if (batchLoopVideos.length === 0) {
-        resetBatchUI();
-        return;
-    }
-
-    elements.batchVideoCount.textContent = batchLoopVideos.length;
-
-    elements.batchVideos.innerHTML = batchLoopVideos.map((v, i) => `
-        <div class="batch-video-item" data-index="${i}">
-            <div class="batch-video-header">
-                <span class="video-number">${i + 1}</span>
-                <span class="video-name">${v.name}</span>
-                <span class="video-duration">${formatDuration(v.duration)}</span>
-                <button class="batch-expand-btn" onclick="toggleBatchExpand(${i})">設定 ▼</button>
-                <button class="remove-btn" onclick="removeBatchVideo(${i})">✕</button>
-            </div>
-            <div class="batch-video-controls" id="batchControls${i}" style="display: none;">
-                <div class="batch-control-row">
-                    <label class="control-label">ループ回数</label>
-                    <input type="number" value="${v.loopCount}" min="1" max="20" class="loop-input"
-                           oninput="updateBatchSetting(${i}, 'loopCount', parseInt(this.value) || 1)">
-                </div>
-                <div class="batch-control-row">
-                    <label class="control-label">再生モード</label>
-                    <div class="loop-mode-switcher">
-                        <button class="mode-btn ${v.loopMode === 'reverse' ? 'active' : ''}"
-                                onclick="updateBatchMode(${i}, 'reverse', this)">Reverse</button>
-                        <button class="mode-btn ${v.loopMode === 'forward' ? 'active' : ''}"
-                                onclick="updateBatchMode(${i}, 'forward', this)">Forward</button>
-                    </div>
-                </div>
-                <div class="batch-control-row batch-frame-cut-row" style="display: ${v.loopMode === 'reverse' ? 'flex' : 'none'};">
-                    <label class="control-label">フレームカット</label>
-                    <div class="loop-mode-switcher">
-                        <button class="mode-btn ${!v.frameCut ? 'active' : ''}"
-                                onclick="updateBatchFrameCut(${i}, false, this)">OFF</button>
-                        <button class="mode-btn ${v.frameCut ? 'active' : ''}"
-                                onclick="updateBatchFrameCut(${i}, true, this)">ON</button>
-                    </div>
-                </div>
-                <div class="batch-control-row">
-                    <label class="control-label">推定出力時間</label>
-                    <span class="batch-est-value" id="batchEst${i}">${calcBatchEstDuration(v)}</span>
-                </div>
-            </div>
-        </div>
-    `).join('');
-
-    // 合計推定時間＋注意喚起を追加
-    const existing = elements.batchVideoList.querySelector('.batch-footer');
-    if (existing) existing.remove();
-
-    const totalSizeMB = batchLoopVideos.reduce((sum, v) => sum + v.file.size, 0) / (1024 * 1024);
-    const count = batchLoopVideos.length;
-
-    let warningHtml = '';
-    if (count >= 20 || totalSizeMB >= 200) {
-        warningHtml = `<div class="batch-warning batch-warning-danger">
-            ⚠️ 動画${count}本（合計${totalSizeMB.toFixed(0)}MB）- ブラウザがクラッシュする可能性があります。本数を減らすことを推奨します。
-        </div>`;
-    } else if (count >= 10 || totalSizeMB >= 100) {
-        warningHtml = `<div class="batch-warning">
-            ⚠️ 動画${count}本（合計${totalSizeMB.toFixed(0)}MB）- 処理に時間がかかる場合があります。
-        </div>`;
-    }
-
-    const footerHtml = `
-        <div class="batch-footer">
-            <div class="batch-total-info">
-                <span class="total-label">合計推定出力時間:</span>
-                <span id="batchTotalDuration" class="total-value">${calcBatchTotalDuration()}</span>
-            </div>
-            ${warningHtml}
-            <div class="batch-note">
-                ※ 目安: 10本・合計100MB以内を推奨（ブラウザ上で処理するため）
-            </div>
-        </div>`;
-    elements.batchVideos.insertAdjacentHTML('afterend', footerHtml);
-}
-
-// バッチ動画削除
-function removeBatchVideo(index) {
-    batchLoopVideos.splice(index, 1);
-    if (batchLoopVideos.length === 0) {
-        resetBatchUI();
-    } else {
-        updateBatchVideoList();
-    }
-}
-
-// 展開/折りたたみ
-function toggleBatchExpand(index) {
-    const controls = document.getElementById(`batchControls${index}`);
-    const item = controls.closest('.batch-video-item');
-    const btn = item.querySelector('.batch-expand-btn');
-    if (controls.style.display === 'none') {
-        controls.style.display = 'flex';
-        btn.textContent = '設定 ▲';
-    } else {
-        controls.style.display = 'none';
-        btn.textContent = '設定 ▼';
-    }
-}
-
-// 個別設定変更
-function updateBatchSetting(index, key, value) {
-    batchLoopVideos[index][key] = value;
-    updateBatchEstDurations();
-}
-
-function updateBatchMode(index, mode, btn) {
-    batchLoopVideos[index].loopMode = mode;
-    const switcher = btn.parentElement;
-    switcher.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    // フレームカット行の表示切替
-    const item = btn.closest('.batch-video-item');
-    const frameCutRow = item.querySelector('.batch-frame-cut-row');
-    if (frameCutRow) {
-        frameCutRow.style.display = mode === 'reverse' ? 'flex' : 'none';
-    }
-    updateBatchEstDurations();
-}
-
-function updateBatchFrameCut(index, value, btn) {
-    batchLoopVideos[index].frameCut = value;
-    const switcher = btn.parentElement;
-    switcher.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-}
-
-// バッチ処理メイン
-async function generateBatchLoopVideos() {
-    if (!ffmpeg || batchLoopVideos.length === 0) return;
-
-    isBatchMode = true;
-    batchOutputBlobs = [];
-
-    // UI
-    elements.batchVideoList.style.display = 'none';
-    elements.outputSection.style.display = 'none';
-    elements.progress.style.display = 'block';
-    elements.progressFill.classList.remove('pulsing');
-    updateProgress(0);
-
-    const total = batchLoopVideos.length;
-    let failCount = 0;
-
-    try {
-        for (let i = 0; i < total; i++) {
-            const videoStart = 5 + (85 * i / total);
-            const videoEnd = 5 + (85 * (i + 1) / total);
-
-            updateProgress(Math.round(videoStart));
-            startProgressLabelAnimation(`${i + 1}/${total}本目処理中`);
-
-            try {
-                const blob = await processSingleLoopVideo(batchLoopVideos[i], videoStart, videoEnd);
-                const originalName = batchLoopVideos[i].name.replace(/\.[^.]+$/, '');
-                batchOutputBlobs.push({ blob, name: `${originalName}_loop.mp4` });
-            } catch (err) {
-                console.error(`Batch video ${i + 1} failed:`, err);
-                failCount++;
-            }
-        }
-
-        if (batchOutputBlobs.length === 0) {
-            throw new Error('すべての動画の処理に失敗しました');
-        }
-
-        // ZIP作成
-        updateProgress(90);
-        startProgressLabelAnimation('ZIPファイルを作成中');
-
-        const zip = new JSZip();
-        for (const item of batchOutputBlobs) {
-            zip.file(item.name, item.blob, { compression: 'STORE' });
-        }
-        outputBlob = await zip.generateAsync({ type: 'blob' });
-
-        // 自動ダウンロード
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(outputBlob);
-        link.download = `loop_videos_${Date.now()}.zip`;
-        link.click();
-
-        stopProgressLabelAnimation();
-        updateProgress(100);
-
-        await new Promise(resolve => setTimeout(resolve, 400));
-
-        // 完了表示
-        elements.progress.style.display = 'none';
-        elements.resultSection.style.display = 'block';
-        const resultPreview = elements.resultSection.querySelector('.result-preview');
-        if (resultPreview) resultPreview.style.display = 'none';
-        const successEl = elements.resultSection.querySelector('.success');
-        let msg = `${batchOutputBlobs.length}本のループ動画を作成しました！`;
-        if (failCount > 0) msg += `（${failCount}本失敗）`;
-        successEl.textContent = msg;
-
-    } catch (error) {
-        console.error('Batch error:', error);
-        stopProgressLabelAnimation();
-
-        const errorMsg = error.message || error.toString();
-        if (errorMsg.includes('OOM') || errorMsg.includes('memory') || errorMsg.includes('abort')) {
-            alert('メモリ不足エラー\n\nバッチ処理中にメモリが不足しました。\n動画の数を減らすか、短い動画を使用してください。');
-        } else {
-            alert(`バッチ処理エラー: ${errorMsg}`);
-        }
-        resetBatchUI();
-    } finally {
-        isBatchMode = false;
-    }
-}
-
-// 1本のループ動画を処理してBlobを返す
-async function processSingleLoopVideo(config, videoStart, videoEnd) {
-    const { file, loopCount, loopMode: mode, frameCut } = config;
-    const range = videoEnd - videoStart;
-
-    // 入力ファイル書き込み
-    ffmpeg.FS('writeFile', 'input.mp4', await window.ffmpegFetchFile(file));
-
-    if (mode === 'reverse' && frameCut) {
-        // S-CUT-E方式: 個別ステップ + concat demuxer（高速・省メモリ）
-        // Step 1: H.264正規化
-        batchProgressStart = videoStart;
-        batchProgressEnd = videoStart + range * 0.25;
-        await ffmpeg.run(
-            '-i', 'input.mp4',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'forward.mp4'
-        );
-
-        // Step 2: 逆再生版
-        batchProgressStart = videoStart + range * 0.25;
-        batchProgressEnd = videoStart + range * 0.5;
-        await ffmpeg.run(
-            '-i', 'forward.mp4',
-            '-vf', 'reverse',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'reverse.mp4'
-        );
-
-        // Step 3: forward先頭フレーム除去（ループ繋ぎ目用）
-        batchProgressStart = videoStart + range * 0.5;
-        batchProgressEnd = videoStart + range * 0.65;
-        await ffmpeg.run(
-            '-i', 'forward.mp4',
-            '-vf', 'trim=start_frame=1,setpts=PTS-STARTPTS',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'forward_cut.mp4'
-        );
-
-        // Step 4: reverse先頭フレーム除去（ループ繋ぎ目用）
-        batchProgressStart = videoStart + range * 0.65;
-        batchProgressEnd = videoStart + range * 0.8;
-        await ffmpeg.run(
-            '-i', 'reverse.mp4',
-            '-vf', 'trim=start_frame=1,setpts=PTS-STARTPTS',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'reverse_cut.mp4'
-        );
-
-        // Step 5: concat demuxer（-c copy 高速連結）
-        let fileListContent = "file 'forward.mp4'\nfile 'reverse_cut.mp4'\n";
-        for (let i = 1; i < loopCount; i++) {
-            fileListContent += "file 'forward_cut.mp4'\nfile 'reverse_cut.mp4'\n";
-        }
-        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
-
-        batchProgressStart = videoStart + range * 0.8;
-        batchProgressEnd = videoEnd;
-        await ffmpeg.run(
-            '-f', 'concat', '-i', 'filelist.txt',
-            '-c', 'copy', '-movflags', '+faststart',
-            'output.mp4'
-        );
-    } else if (mode === 'reverse') {
-        // concat demuxer reverse（3段階）
-        batchProgressStart = videoStart;
-        batchProgressEnd = videoStart + range * 0.4;
-        await ffmpeg.run(
-            '-i', 'input.mp4',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'forward.mp4'
-        );
-
-        batchProgressStart = videoStart + range * 0.4;
-        batchProgressEnd = videoStart + range * 0.8;
-        await ffmpeg.run(
-            '-i', 'forward.mp4',
-            '-vf', 'reverse',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'reverse.mp4'
-        );
-
-        let fileListContent = '';
-        for (let i = 0; i < loopCount; i++) {
-            fileListContent += "file 'forward.mp4'\n";
-            fileListContent += "file 'reverse.mp4'\n";
-        }
-        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
-
-        batchProgressStart = videoStart + range * 0.8;
-        batchProgressEnd = videoEnd;
-        await ffmpeg.run(
-            '-f', 'concat', '-i', 'filelist.txt',
-            '-c', 'copy', '-movflags', '+faststart',
-            'output.mp4'
-        );
-    } else {
-        // Forward mode
-        let fileListContent = '';
-        for (let i = 0; i < loopCount; i++) {
-            fileListContent += "file 'input.mp4'\n";
-        }
-        ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
-
-        batchProgressStart = videoStart;
-        batchProgressEnd = videoEnd;
-        await ffmpeg.run(
-            '-f', 'concat', '-i', 'filelist.txt',
-            '-c', 'copy', '-movflags', '+faststart',
-            'output.mp4'
-        );
-    }
-
-    // 出力読み取り
-    const outputData = ffmpeg.FS('readFile', 'output.mp4');
-    if (!outputData || outputData.length === 0) {
-        throw new Error('出力ファイルが空です');
-    }
-    const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
-
-    // クリーンアップ
-    try { ffmpeg.FS('unlink', 'input.mp4'); } catch(e) {}
-    try { ffmpeg.FS('unlink', 'output.mp4'); } catch(e) {}
-    try { ffmpeg.FS('unlink', 'forward.mp4'); } catch(e) {}
-    try { ffmpeg.FS('unlink', 'reverse.mp4'); } catch(e) {}
-    try { ffmpeg.FS('unlink', 'forward_cut.mp4'); } catch(e) {}
-    try { ffmpeg.FS('unlink', 'reverse_cut.mp4'); } catch(e) {}
-    try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
-
-    return blob;
-}
-
-// バッチUIリセット
-function resetBatchUI() {
-    batchLoopVideos = [];
-    batchOutputBlobs = [];
-    isBatchMode = false;
-
-    elements.batchVideoList.style.display = 'none';
-    elements.inputSection.style.display = 'block';
-    elements.videoInfo.style.display = 'none';
-    elements.controlsSection.style.display = 'none';
-    elements.outputSection.style.display = 'none';
-    elements.progress.style.display = 'none';
-    elements.resultSection.style.display = 'none';
-
-    // resultSectionをデフォルトに復元
-    const resultPreview = elements.resultSection.querySelector('.result-preview');
-    if (resultPreview) resultPreview.style.display = '';
-    const successEl = elements.resultSection.querySelector('.success');
-    if (successEl) successEl.textContent = '完了しました！';
-
-    elements.previewVideo.src = '';
-    elements.resultVideo.src = '';
-}
-
-// グローバルに公開（onclick用）
-window.removeBatchVideo = removeBatchVideo;
-window.toggleBatchExpand = toggleBatchExpand;
-window.updateBatchSetting = updateBatchSetting;
-window.updateBatchMode = updateBatchMode;
-window.updateBatchFrameCut = updateBatchFrameCut;
-
-// ===== END BATCH LOOP FUNCTIONS =====
 
 // フレームレートを推定（requestVideoFrameCallbackを使用）
 function estimateFrameRate(video) {
@@ -1057,60 +560,42 @@ async function generateLoopVideo() {
 
         console.log('Mode:', loopMode, 'FrameCut:', loopFrameCut, 'Loops:', loopCount);
 
-        // Reverseモード + フレームカットON: S-CUT-E方式（個別ステップ + concat demuxer）
+        // Reverseモード + フレームカットON: filter_complex方式（12345432パターン）
         if (loopMode === 'reverse' && loopFrameCut) {
-            console.log('Using S-CUT-E style frame cut (separate steps + concat)');
+            console.log('Using filter_complex mode (frame cut ON)');
 
-            // Step 1: H.264正規化
+            // filter_complexを構築
+            let filterParts = [];
+            let concatInputs = '';
+
+            // 最初のループ: 完全な forward + reverse（最後のフレーム除去）
+            filterParts.push(`[0:v]copy[forward0]`);
+            filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse0]`);
+            concatInputs += `[forward0][reverse0]`;
+
+            // 2回目以降: 最初と最後のフレームを除去
+            for (let i = 1; i < loopCount; i++) {
+                filterParts.push(`[0:v]trim=start_frame=1,setpts=PTS-STARTPTS[forward${i}]`);
+                filterParts.push(`[0:v]reverse,trim=start_frame=1[reverse${i}]`);
+                concatInputs += `[forward${i}][reverse${i}]`;
+            }
+
+            filterParts.push(`${concatInputs}concat=n=${loopCount * 2}:v=1:a=0[output]`);
+            const filterComplex = filterParts.join(';');
+            console.log('Filter complex:', filterComplex);
+
             updateProgress(10);
+
             await ffmpeg.run(
                 '-i', 'input.mp4',
-                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-                '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-                'forward.mp4'
-            );
-
-            // Step 2: 逆再生版
-            updateProgress(25);
-            await ffmpeg.run(
-                '-i', 'forward.mp4',
-                '-vf', 'reverse',
-                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-                '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-                'reverse.mp4'
-            );
-
-            // Step 3: forward先頭フレーム除去
-            updateProgress(45);
-            await ffmpeg.run(
-                '-i', 'forward.mp4',
-                '-vf', 'trim=start_frame=1,setpts=PTS-STARTPTS',
-                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-                '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-                'forward_cut.mp4'
-            );
-
-            // Step 4: reverse先頭フレーム除去
-            updateProgress(60);
-            await ffmpeg.run(
-                '-i', 'reverse.mp4',
-                '-vf', 'trim=start_frame=1,setpts=PTS-STARTPTS',
-                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-                '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-                'reverse_cut.mp4'
-            );
-
-            // Step 5: concat demuxer（-c copy 高速連結）
-            updateProgress(70);
-            let fileListContent = "file 'forward.mp4'\nfile 'reverse_cut.mp4'\n";
-            for (let i = 1; i < loopCount; i++) {
-                fileListContent += "file 'forward_cut.mp4'\nfile 'reverse_cut.mp4'\n";
-            }
-            ffmpeg.FS('writeFile', 'filelist.txt', fileListContent);
-
-            await ffmpeg.run(
-                '-f', 'concat', '-i', 'filelist.txt',
-                '-c', 'copy', '-movflags', '+faststart',
+                '-filter_complex', filterComplex,
+                '-map', '[output]',
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-an',
+                '-movflags', '+faststart',
                 'output.mp4'
             );
 
@@ -1211,13 +696,17 @@ async function generateLoopVideo() {
         startProgressAnimation(95, 100, 400);
 
         // クリーンアップ
-        try { ffmpeg.FS('unlink', 'input.mp4'); } catch(e) {}
-        try { ffmpeg.FS('unlink', 'output.mp4'); } catch(e) {}
-        try { ffmpeg.FS('unlink', 'forward.mp4'); } catch(e) {}
-        try { ffmpeg.FS('unlink', 'reverse.mp4'); } catch(e) {}
-        try { ffmpeg.FS('unlink', 'forward_cut.mp4'); } catch(e) {}
-        try { ffmpeg.FS('unlink', 'reverse_cut.mp4'); } catch(e) {}
-        try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+        ffmpeg.FS('unlink', 'input.mp4');
+        ffmpeg.FS('unlink', 'output.mp4');
+        // concat demuxer方式（フレームカットOFF）の場合のみ中間ファイルを削除
+        if (loopMode === 'reverse' && !loopFrameCut) {
+            try { ffmpeg.FS('unlink', 'forward.mp4'); } catch(e) {}
+            try { ffmpeg.FS('unlink', 'reverse.mp4'); } catch(e) {}
+            try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+        }
+        if (loopMode === 'forward') {
+            try { ffmpeg.FS('unlink', 'filelist.txt'); } catch(e) {}
+        }
 
         // 少し待ってから完了表示（アニメーションが見えるように）
         await new Promise(resolve => setTimeout(resolve, 600));
@@ -1803,7 +1292,8 @@ function setupEventListeners() {
     elements.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         elements.dropZone.classList.remove('drag-over');
-        handleVideoFile(e.dataTransfer.files);
+        const file = e.dataTransfer.files[0];
+        handleVideoFile(file);
     });
 
     elements.dropZone.addEventListener('click', () => {
@@ -1811,8 +1301,8 @@ function setupEventListeners() {
     });
 
     elements.fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) handleVideoFile(e.target.files);
-        e.target.value = '';
+        const file = e.target.files[0];
+        if (file) handleVideoFile(file);
     });
 
     elements.changeFileBtn.addEventListener('click', () => {
@@ -1874,39 +1364,20 @@ function setupEventListeners() {
     elements.themePink.addEventListener('click', () => setTheme('pink'));
 
     // 生成・ダウンロード
-    elements.generateBtn.addEventListener('click', () => {
-        if (batchLoopVideos.length > 0) {
-            generateBatchLoopVideos();
-        } else {
-            generateLoopVideo();
-        }
-    });
+    elements.generateBtn.addEventListener('click', generateLoopVideo);
     elements.downloadBtn.addEventListener('click', () => {
-        if (batchOutputBlobs.length > 0 && outputBlob) {
-            // バッチZIP再ダウンロード
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(outputBlob);
-            link.download = `loop_videos_${Date.now()}.zip`;
-            link.click();
-        } else if (currentMode === 'merge') {
+        if (currentMode === 'merge') {
             downloadMergeResult();
         } else {
             downloadResult();
         }
     });
     elements.newVideoBtn.addEventListener('click', () => {
-        if (batchLoopVideos.length > 0 || batchOutputBlobs.length > 0) {
-            resetBatchUI();
-        } else if (currentMode === 'merge') {
+        if (currentMode === 'merge') {
             resetMergeUI();
         } else {
             resetUI();
         }
-    });
-
-    // バッチ: 動画追加ボタン
-    elements.addMoreLoopBtn.addEventListener('click', () => {
-        elements.fileInput.click();
     });
 
     // ===== MERGE MODE EVENT LISTENERS =====

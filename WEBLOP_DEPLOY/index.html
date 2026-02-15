@@ -91,7 +91,7 @@
                     <span>動画をドラッグ&ドロップ</span>
                     <span class="drop-hint">または クリックして選択</span>
                 </div>
-                <input type="file" id="fileInput" accept="video/*" multiple hidden>
+                <input type="file" id="fileInput" accept="video/*" hidden>
             </div>
 
             <!-- 動画情報 -->
@@ -113,16 +113,6 @@
                     <video id="previewVideo" class="preview" controls></video>
                 </div>
                 <button id="changeFileBtn" class="btn change-btn">別のファイルを選択</button>
-            </div>
-
-            <!-- バッチ動画リスト -->
-            <div id="batchVideoList" class="batch-video-list" style="display: none;">
-                <div class="list-header">
-                    <span class="list-title">ループ動画リスト</span>
-                    <span class="list-count">(<span id="batchVideoCount">0</span>本)</span>
-                </div>
-                <div id="batchVideos" class="batch-videos"></div>
-                <button id="addMoreLoopBtn" class="btn change-btn">+ 動画を追加</button>
             </div>
 
             <!-- コントロール -->
@@ -258,7 +248,6 @@
     </div>
 
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
-    <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
