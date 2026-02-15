@@ -91,7 +91,7 @@
                     <span>動画をドラッグ&ドロップ</span>
                     <span class="drop-hint">または クリックして選択</span>
                 </div>
-                <input type="file" id="fileInput" accept="video/*" multiple hidden>
+                <input type="file" id="fileInput" accept="video/*" hidden>
             </div>
 
             <!-- 動画情報 -->
@@ -113,41 +113,6 @@
                     <video id="previewVideo" class="preview" controls></video>
                 </div>
                 <button id="changeFileBtn" class="btn change-btn">別のファイルを選択</button>
-            </div>
-
-            <!-- バッチ動画リスト -->
-            <div id="batchVideoList" class="batch-video-list" style="display: none;">
-                <div class="list-header">
-                    <span class="list-title">ループ動画リスト</span>
-                    <span class="list-count">(<span id="batchVideoCount">0</span>本)</span>
-                </div>
-                <!-- 一括設定 -->
-                <div class="batch-bulk-wrap">
-                    <button id="bulkToggleBtn" class="batch-bulk-toggle" type="button">一括設定</button>
-                    <div id="bulkDropdown" class="batch-bulk-dropdown">
-                        <div class="bulk-dropdown-row">
-                            <label class="control-label">ループ回数</label>
-                            <input type="number" id="bulkLoopCount" value="3" min="1" max="20" class="loop-input">
-                        </div>
-                        <div class="bulk-dropdown-row">
-                            <label class="control-label">再生モード</label>
-                            <div class="loop-mode-switcher">
-                                <button id="bulkModeReverse" class="mode-btn active" type="button">Reverse</button>
-                                <button id="bulkModeForward" class="mode-btn" type="button">Forward</button>
-                            </div>
-                        </div>
-                        <div class="bulk-dropdown-row">
-                            <label class="control-label">フレームカット</label>
-                            <div class="loop-mode-switcher">
-                                <button id="bulkFcOff" class="mode-btn active" type="button">OFF</button>
-                                <button id="bulkFcOn" class="mode-btn" type="button">ON</button>
-                            </div>
-                        </div>
-                        <button id="bulkApplyBtn" class="batch-bulk-apply" type="button">全動画に適用</button>
-                    </div>
-                </div>
-                <div id="batchVideos" class="batch-videos"></div>
-                <button id="addMoreLoopBtn" class="btn change-btn">+ 動画を追加</button>
             </div>
 
             <!-- コントロール -->
@@ -279,21 +244,10 @@
 
         <footer class="footer">
             <span>Powered by FFmpeg.wasm</span>
-            <button id="logBtn" class="log-btn" title="前回の設定履歴">↺</button>
         </footer>
-
-        <!-- ログパネル -->
-        <div id="logPanel" class="log-panel" style="display: none;">
-            <div class="log-panel-header">
-                <span class="log-panel-title">前回の設定履歴</span>
-                <button id="logCloseBtn" class="log-close-btn">✕</button>
-            </div>
-            <div id="logContent" class="log-content"></div>
-        </div>
     </div>
 
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
-    <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
